@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>꼬마버스 타요 동네 순찰대 & 4세 놀이교실</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 3D 캔버스 컨테이너 -->
+    <div id="game-container"></div>
+
+    <!-- 상단 HUD -->
+    <div id="top-hud">
+        <div class="hud-left-group">
+            <div class="hud-pill" id="btn-char-select" title="다른 꼬마버스로 바꾸기">
+                <span>🚌</span>
+                <span id="current-bus-name">타요</span>
+                <span style="font-size: 0.82rem; color: #0288D1;">(바꾸기)</span>
+            </div>
+
+            <div class="hud-pill hud-pill-edu" id="btn-edu-open" title="4세 한글·숫자·영어 놀이교실 열기 (단축키: E)">
+                <span>🎓</span>
+                <span>놀이교실</span>
+            </div>
+
+            <div class="hud-pill" id="btn-time" title="낮 / 노을 / 밤 시간 바꾸기 (단축키: T)">
+                <span>☀️</span>
+                <span>낮</span>
+            </div>
+
+            <div class="hud-pill" id="btn-bgm" title="배경음악 켜기/끄기 (단축키: M)">
+                <span>🎵</span>
+                <span>음악 ON</span>
+            </div>
+
+            <div class="hud-pill" id="btn-kid-assist" title="4세 아이가 전진만 눌러도 목적지로 핸들을 살짝 도와주는 운전보조">
+                <span>👶</span>
+                <span>4세 운전보조 ON</span>
+            </div>
+
+            <div class="hud-pill" id="btn-recover" title="차체가 뒤집히거나 끼었을 때 바로세우기 (단축키: R)">
+                <span>🔄</span>
+                <span>바로세우기</span>
+            </div>
+
+            <div class="hud-pill" id="btn-low-spec" title="라즈베리파이 5 최적화 저사양 모드 (단축키: L)">
+                <span>⚡</span>
+                <span>저사양</span>
+            </div>
+        </div>
+
+        <div class="hud-pill" id="star-counter">
+            ⭐ 0
+        </div>
+    </div>
+
+    <!-- 현재 미션 상태 표시줄 -->
+    <div id="mission-status-bar">
+        🚏 승객을 찾고 있어요...
+    </div>
+
+    <!-- 우측 상단 미니맵 레이더 -->
+    <div id="minimap-container">
+        <canvas id="minimap-canvas" width="180" height="180"></canvas>
+        <div class="minimap-legend">
+            <span>🔵 나</span>
+            <span>🟢 승객</span>
+            <span>🔴 목적지</span>
+        </div>
+    </div>
+
+    <!-- 라즈베리파이 5 모니터링 디버그 HUD -->
+    <div id="debug-hud"></div>
+
+    <!-- 중앙 미션 알림 팝업 -->
+    <div id="mission-popup" class="hidden">
+        🚦 오늘도 안전하게 순찰해볼까요?
+    </div>
+
+    <!-- 어린이용 속도계 -->
+    <div id="speedometer-box">
+        <div class="speed-header">
+            <span>💨 속도</span>
+            <strong><span id="speed-value">0</span> km/h</strong>
+        </div>
+        <div class="speed-bar-bg">
+            <div id="speed-bar-fill"></div>
+        </div>
+    </div>
+
+    <!-- PC 조작 안내 (키보드 힌트) -->
+    <div id="key-guide">
+        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | E: 놀이교실 | T: 낮/밤 | M: 음악 | R: 복구 | C: 시점
+    </div>
+
+    <!-- 하단 온스크린 터치/마우스 컨트롤 버튼 (어린이용 대형 버튼) -->
+    <div id="controls-container">
+        <!-- 왼쪽: 좌/우 핸들 조작 -->
+        <div class="control-group">
+            <button class="btn-control btn-steering" id="btn-left" aria-label="좌회전">◀</button>
+            <button class="btn-control btn-steering" id="btn-right" aria-label="우회전">▶</button>
+        </div>
+
+        <!-- 중앙: 경적 & 카메라 버튼 -->
+        <div class="center-controls">
+            <button class="btn-control" id="btn-horn" aria-label="경적 울리기" title="빵빵!">🎺</button>
+            <button class="btn-control" id="btn-camera" aria-label="시점 변경" title="시점 변경">📷</button>
+        </div>
+
+        <!-- 오른쪽: 가속, 후진, 브레이크 페달 -->
+        <div class="control-group">
+            <button class="btn-control" id="btn-reverse" aria-label="후진">⬇</button>
+            <button class="btn-control" id="btn-brake" aria-label="브레이크">🛑</button>
+            <button class="btn-control" id="btn-gas" aria-label="전진 액셀">⬆</button>
+        </div>
+    </div>
+
+    <!-- 캐릭터 선택 모달 팝업 -->
+    <div id="char-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="modal-title">🚌 누구를 타고 달려볼까요?</h2>
+            <div class="char-grid">
+                <!-- 1. 타요 -->
+                <div class="char-card selected" data-char="tayo">
+                    <div class="char-avatar avatar-tayo">120</div>
+                    <div class="char-name">타요</div>
+                    <div class="char-desc">호기심 강하고 명랑한 새내기 버스</div>
+                </div>
+
+                <!-- 2. 로기 -->
+                <div class="char-card" data-char="rogi">
+                    <div class="char-avatar avatar-rogi">1000</div>
+                    <div class="char-name">로기</div>
+                    <div class="char-desc">뽐내기 좋아하는 활달한 초록 버스</div>
+                </div>
+
+                <!-- 3. 라니 -->
+                <div class="char-card" data-char="lani">
+                    <div class="char-avatar avatar-lani">02</div>
+                    <div class="char-name">라니</div>
+                    <div class="char-desc">상냥하고 귀여운 애교 만점 버스</div>
+                </div>
+
+                <!-- 4. 가니 -->
+                <div class="char-card" data-char="gani">
+                    <div class="char-avatar avatar-gani">1339</div>
+                    <div class="char-name">가니</div>
+                    <div class="char-desc">생각이 깊고 남을 배려하는 버스</div>
+                </div>
+            </div>
+            <button class="btn-close" id="btn-close-modal">출발하기!</button>
+        </div>
+    </div>
+
+    <!-- 4세 맞춤 한글 / 숫자 / 영어 학습 모달 팝업 -->
+    <div id="edu-modal" class="modal-overlay hidden">
+        <div class="modal-content edu-modal-card">
+            <div class="edu-header">
+                <div id="edu-passenger-badge" class="edu-badge">🐻 아기 곰 손님의 미션!</div>
+                <div class="edu-tabs">
+                    <button class="edu-tab-btn active" data-cat="all">🌟 골고루</button>
+                    <button class="edu-tab-btn" data-cat="hangul">🇰🇷 한글놀이</button>
+                    <button class="edu-tab-btn" data-cat="number">🔢 숫자놀이</button>
+                    <button class="edu-tab-btn" data-cat="english">🔤 영어놀이</button>
+                </div>
+            </div>
+
+            <h2 id="edu-title" class="edu-question-title">문제를 불러오는 중...</h2>
+
+            <div id="edu-body" class="edu-body-area"></div>
+
+            <div class="edu-footer">
+                <button class="edu-action-btn edu-voice-btn" id="btn-edu-voice">🔊 다시 듣기</button>
+                <button class="edu-action-btn edu-skip-btn" id="btn-edu-skip">🚌 바로 출발하기 (건너뛰기)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vite 모듈 진입점 -->
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

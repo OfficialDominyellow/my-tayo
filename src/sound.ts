@@ -1,0 +1,361 @@
+/**
+ * Tayo Sound, BGM & Voice Manager
+ * Web Audio API 신디사이저 기반 효과음/배경음악 및 Web Speech API 한/영 더빙
+ */
+
+export class SoundManager {
+  private ctx: AudioContext | null = null;
+  private engineOsc: OscillatorNode | null = null;
+  private engineGain: GainNode | null = null;
+  private isEngineRunning: boolean = false;
+  public muted: boolean = false;
+  public isVoiceEnabled: boolean = true;
+
+  // 배경음악 (BGM) 상태
+  public isBgmPlaying: boolean = false;
+  private bgmTimer: number | null = null;
+  private bgmStep: number = 0;
+
+  public init(): void {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // 신나는 꼬마버스 동요풍 배경음악 토글
+  public toggleBgm(): boolean {
+    this.init();
+    if (this.isBgmPlaying) {
+      this.stopBgm();
+      return false;
+    } else {
+      this.startBgm();
+      return true;
+    }
+  }
+
+  public startBgm(): void {
+    this.init();
+    if (this.isBgmPlaying || this.muted) return;
+    this.isBgmPlaying = true;
+    this.bgmStep = 0;
+
+    // 밝고 경쾌한 실로폰/오르골 멜로디 시퀀스 (C 메이저 동요 풍)
+    const melody = [
+      261.63, 329.63, 392.00, 523.25, // 도 미 솔 높은도
+      440.00, 392.00, 329.63, 261.63, // 라 솔 미 도
+      293.66, 349.23, 440.00, 392.00, // 레 파 라 솔
+      329.63, 293.66, 261.63, 0,      // 미 레 도 (쉼표)
+      392.00, 392.00, 440.00, 392.00, // 솔 솔 라 솔
+      523.25, 493.88, 392.00, 0,      // 도 시 솔
+      349.23, 329.63, 293.66, 392.00, // 파 미 레 솔
+      523.25, 0, 523.25, 0            // 도! 도!
+    ];
+
+    const playNextNote = () => {
+      if (!this.isBgmPlaying || !this.ctx || this.muted) return;
+      const freq = melody[this.bgmStep % melody.length];
+      this.bgmStep++;
+
+      if (freq > 0) {
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.045, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+    };
+
+    this.bgmTimer = window.setInterval(playNextNote, 280);
+  }
+
+  public stopBgm(): void {
+    this.isBgmPlaying = false;
+    if (this.bgmTimer !== null) {
+      clearInterval(this.bgmTimer);
+      this.bgmTimer = null;
+    }
+  }
+
+  // 빵빵! 경적 (F4 + A4 화음 2연타)
+  public playHorn(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const playHonk = (time: number, duration: number) => {
+      if (!this.ctx) return;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(349.23, time); // F4
+      osc2.frequency.setValueAtTime(440.00, time); // A4
+
+      gain.gain.setValueAtTime(0.2, time);
+      gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc1.start(time);
+      osc2.start(time);
+      osc1.stop(time + duration);
+      osc2.stop(time + duration);
+    };
+
+    playHonk(now, 0.16);
+    playHonk(now + 0.20, 0.22);
+  }
+
+  // 엔진 부릉 사운드
+  public startEngine(): void {
+    this.init();
+    if (!this.ctx || this.isEngineRunning || this.muted) return;
+
+    try {
+      this.engineOsc = this.ctx.createOscillator();
+      this.engineGain = this.ctx.createGain();
+
+      this.engineOsc.type = 'triangle';
+      this.engineOsc.frequency.setValueAtTime(50, this.ctx.currentTime);
+      this.engineGain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+
+      this.engineOsc.connect(this.engineGain);
+      this.engineGain.connect(this.ctx.destination);
+
+      this.engineOsc.start();
+      this.isEngineRunning = true;
+    } catch (e) {
+      console.warn('Engine start failed:', e);
+    }
+  }
+
+  // 속도에 따른 엔진 피치 조절
+  public updateEngine(speedRatio: number): void {
+    if (!this.ctx || !this.isEngineRunning || !this.engineOsc) return;
+    const ratio = Math.max(0, Math.min(1, Math.abs(speedRatio)));
+    const targetFreq = 50 + ratio * 75;
+    this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+    if (this.engineGain) {
+      const targetGain = 0.025 + ratio * 0.04;
+      this.engineGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
+    }
+  }
+
+  public stopEngine(): void {
+    if (this.engineOsc) {
+      try {
+        this.engineOsc.stop();
+        this.engineOsc.disconnect();
+      } catch {}
+      this.engineOsc = null;
+    }
+    this.isEngineRunning = false;
+  }
+
+  // 문 열림 ("치익-")
+  public playDoor(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const bufferSize = this.ctx.sampleRate * 0.35;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, this.ctx.currentTime);
+    filter.Q.setValueAtTime(2.2, this.ctx.currentTime);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.18, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    noise.start();
+  }
+
+  // 칭찬 별 획득 소리 (도-미-솔-도 차임벨)
+  public playStar(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const time = this.ctx.currentTime + idx * 0.075;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, time);
+
+      gain.gain.setValueAtTime(0.2, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(time);
+      osc.stop(time + 0.3);
+    });
+  }
+
+  // 학습 퀴즈 카드 터치음 (경쾌한 물방울 퐁!)
+  public playPop(pitchMultiplier: number = 1.0): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const time = this.ctx.currentTime;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(380 * pitchMultiplier, time);
+    osc.frequency.exponentialRampToValueAtTime(760 * pitchMultiplier, time + 0.11);
+
+    gain.gain.setValueAtTime(0.22, time);
+    gain.gain.exponentialRampToValueAtTime(0.005, time + 0.12);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(time);
+    osc.stop(time + 0.12);
+  }
+
+  // 세차장 보글보글 물방울 소리
+  public playCarWash(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    for (let i = 0; i < 6; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const t = this.ctx.currentTime + i * 0.08;
+      const freq = 400 + Math.random() * 600;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.6, t + 0.07);
+
+      gain.gain.setValueAtTime(0.14, t);
+      gain.gain.exponentialRampToValueAtTime(0.005, t + 0.08);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    }
+  }
+
+  // 통통 튕기는 충돌음 / 부드러운 재시도 알림음
+  public playBoing(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const time = this.ctx.currentTime;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, time);
+    osc.frequency.exponentialRampToValueAtTime(520, time + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(310, time + 0.26);
+
+    gain.gain.setValueAtTime(0.2, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.26);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(time);
+    osc.stop(time + 0.26);
+  }
+
+  // 팡파레 축하음
+  public playCelebration(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const chords = [
+      { freqs: [523.25, 659.25, 783.99], time: 0.0, dur: 0.18 },
+      { freqs: [587.33, 739.99, 880.00], time: 0.18, dur: 0.18 },
+      { freqs: [659.25, 783.99, 1046.50], time: 0.36, dur: 0.45 }
+    ];
+
+    chords.forEach(c => {
+      c.freqs.forEach(f => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const start = this.ctx.currentTime + c.time;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, start);
+
+        gain.gain.setValueAtTime(0.14, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + c.dur);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(start);
+        osc.stop(start + c.dur);
+      });
+    });
+  }
+
+  // 한국어 / 영어 TTS 음성
+  public speak(text: string, lang: 'ko-KR' | 'en-US' = 'ko-KR'): void {
+    if (!this.isVoiceEnabled || !('speechSynthesis' in window)) return;
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.rate = lang === 'en-US' ? 0.92 : 1.02;
+      utterance.pitch = 1.2;
+
+      const voices = window.speechSynthesis.getVoices();
+      const prefix = lang.slice(0, 2);
+      const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('TTS speak error:', e);
+    }
+  }
+}
+
+export const soundManager = new SoundManager();
