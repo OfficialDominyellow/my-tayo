@@ -356,6 +356,164 @@ export class SoundManager {
       console.warn('TTS speak error:', e);
     }
   }
+
+  // 🚨 경찰차 / 소방차 / 구급차 리얼 사이렌 사운드
+  public playSiren(kind: 'police' | 'fire' | 'ambulance' = 'police'): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    if (kind === 'ambulance') {
+      // 구급차: 삐-뽀-삐-뽀 (2음 교차 하이-로우 차임)
+      osc.type = 'triangle';
+      const tones = [780, 585, 780, 585, 780, 585];
+      tones.forEach((freq, idx) => {
+        osc.frequency.setValueAtTime(freq, now + idx * 0.28);
+      });
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.005, now + 1.68);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 1.7);
+    } else if (kind === 'fire') {
+      // 소방차: 애앵~애앵~ (길게 오르내리는 웨일 사이렌)
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.linearRampToValueAtTime(880, now + 0.55);
+      osc.frequency.linearRampToValueAtTime(460, now + 1.1);
+      osc.frequency.linearRampToValueAtTime(900, now + 1.65);
+      osc.frequency.linearRampToValueAtTime(440, now + 2.1);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1600, now);
+
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.005, now + 2.15);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 2.15);
+    } else {
+      // 경찰차: 삐용삐용 빠른 옐프 사이렌
+      osc.type = 'sine';
+      for (let i = 0; i < 4; i++) {
+        const t = now + i * 0.36;
+        osc.frequency.setValueAtTime(560, t);
+        osc.frequency.exponentialRampToValueAtTime(1020, t + 0.18);
+        osc.frequency.exponentialRampToValueAtTime(560, t + 0.36);
+      }
+      gain.gain.setValueAtTime(0.17, now);
+      gain.gain.exponentialRampToValueAtTime(0.005, now + 1.45);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 1.46);
+    }
+  }
+
+  // 💦 소방차 물대포 쏴아아! 분사 사운드
+  public playWaterSplash(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const duration = 0.65;
+    const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufferSize) * Math.PI);
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(950, this.ctx.currentTime);
+    filter.frequency.linearRampToValueAtTime(1650, this.ctx.currentTime + duration);
+    filter.Q.setValueAtTime(1.5, this.ctx.currentTime);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.22, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start();
+  }
+
+  // 🏎️ F1 레이싱카 초고속 통과 배기음 (도플러 하이피치 부아아앙~)
+  public playF1Passby(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'sawtooth';
+    osc2.type = 'square';
+
+    osc1.frequency.setValueAtTime(280, now);
+    osc1.frequency.exponentialRampToValueAtTime(760, now + 0.35);
+    osc1.frequency.exponentialRampToValueAtTime(340, now + 0.85);
+
+    osc2.frequency.setValueAtTime(560, now);
+    osc2.frequency.exponentialRampToValueAtTime(1520, now + 0.35);
+    osc2.frequency.exponentialRampToValueAtTime(680, now + 0.85);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, now);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.11, now + 0.35);
+    gain.gain.exponentialRampToValueAtTime(0.002, now + 0.85);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.86);
+    osc2.stop(now + 0.86);
+  }
+
+  // 💖 병원 응급실 반짝반짝 치료 완료 하프 차임
+  public playHealChime(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5, 1318.5];
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const t = this.ctx.currentTime + idx * 0.065;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.16, t);
+      gain.gain.exponentialRampToValueAtTime(0.002, t + 0.38);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    });
+  }
 }
 
 export const soundManager = new SoundManager();
+

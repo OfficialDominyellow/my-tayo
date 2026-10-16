@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { BusConfig, BusType, ExpressionType } from './types';
+import { BusConfig, BusType, ExpressionType, NpcVehicleKind } from './types';
 
 export const BUS_CONFIGS: Record<BusType, BusConfig> = {
   tayo: {
     id: 'tayo',
+    role: 'bus',
     name: '타요',
     number: '120',
     color: 0x0080EE,
@@ -12,6 +13,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
     foreheadBg: '#161A20',
     foreheadText: '#FFFFFF',
     hasWhiteVisor: false,
+    hasSiren: false,
     noseColor: 0x0069C8,
     speedMultiplier: 1.0,
     turnMultiplier: 1.0,
@@ -20,6 +22,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
   },
   rogi: {
     id: 'rogi',
+    role: 'bus',
     name: '로기',
     number: '1000',
     color: 0x46B81D,
@@ -28,6 +31,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
     foreheadBg: '#161A20',
     foreheadText: '#C6FF00',
     hasWhiteVisor: false,
+    hasSiren: false,
     noseColor: 0x369414,
     speedMultiplier: 1.06,
     turnMultiplier: 1.0,
@@ -36,6 +40,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
   },
   lani: {
     id: 'lani',
+    role: 'bus',
     name: '라니',
     number: '02',
     color: 0xFFCC00,
@@ -44,6 +49,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
     foreheadBg: '#161A20',
     foreheadText: '#FFE54C',
     hasWhiteVisor: false,
+    hasSiren: false,
     noseColor: 0xE6AC00,
     speedMultiplier: 0.96,
     turnMultiplier: 1.08,
@@ -52,6 +58,7 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
   },
   gani: {
     id: 'gani',
+    role: 'bus',
     name: '가니',
     number: '1339',
     color: 0xE22B24,
@@ -60,11 +67,66 @@ export const BUS_CONFIGS: Record<BusType, BusConfig> = {
     foreheadBg: '#161A20',
     foreheadText: '#FF5252',
     hasWhiteVisor: true,
+    hasSiren: false,
     noseColor: 0xB81E18,
     speedMultiplier: 1.0,
     turnMultiplier: 0.96,
     description: '조용하고 생각이 깊어 남을 잘 배려하는 성실한 빨간 버스',
     voiceIntro: '안녕, 나는 1339번 가니야. 오늘도 안전하게 태워줄게.'
+  },
+  pat: {
+    id: 'pat',
+    role: 'police',
+    name: '패트 (경찰차)',
+    number: '112',
+    color: 0x1E3A8A,
+    bodyHex: '#1E3A8A',
+    accentColor: '#FFFFFF',
+    foreheadBg: '#0F172A',
+    foreheadText: '#38BDF8',
+    hasWhiteVisor: true,
+    hasSiren: true,
+    noseColor: 0x1D4ED8,
+    speedMultiplier: 1.15,
+    turnMultiplier: 1.12,
+    description: '삐뽀삐뽀! 마을의 안전과 질서를 지키는 용감한 순찰 경찰차',
+    voiceIntro: '삐뽀삐뽀! 용감한 경찰차 패트 출동! 우리 마을 안전은 내가 지킨다!'
+  },
+  frank: {
+    id: 'frank',
+    role: 'firetruck',
+    name: '프랭크 (소방차)',
+    number: '119',
+    color: 0xDC2626,
+    bodyHex: '#DC2626',
+    accentColor: '#FBBF24',
+    foreheadBg: '#7F1D1D',
+    foreheadText: '#FDE047',
+    hasWhiteVisor: false,
+    hasSiren: true,
+    noseColor: 0xB91C1C,
+    speedMultiplier: 1.08,
+    turnMultiplier: 1.02,
+    description: '애앵애앵! 시원한 물대포와 사다리로 불을 끄는 씩씩한 소방차',
+    voiceIntro: '애앵애앵! 119 소방차 프랭크 출동 준비 완료! 불이 나면 언제든 불러줘!'
+  },
+  alice: {
+    id: 'alice',
+    role: 'ambulance',
+    name: '앨리스 (구급차)',
+    number: '119',
+    color: 0xF8FAFC,
+    bodyHex: '#F8FAFC',
+    accentColor: '#EF4444',
+    foreheadBg: '#991B1B',
+    foreheadText: '#FFFFFF',
+    hasWhiteVisor: true,
+    hasSiren: true,
+    noseColor: 0xEF4444,
+    speedMultiplier: 1.12,
+    turnMultiplier: 1.08,
+    description: '삐용삐용! 다친 친구들을 병원으로 빠르게 옮겨 치료하는 다정한 구급차',
+    voiceIntro: '삐용삐용! 구급차 앨리스예요! 아픈 친구들을 빠르게 도와줄게요!'
   }
 };
 
@@ -79,6 +141,7 @@ export interface BusVisualInstance {
   setExpression: (expr: ExpressionType, duration?: number) => void;
   setDoorOpen: (open: boolean) => void;
   setNightLights: (enabled: boolean) => void;
+  setSirenActive: (active: boolean) => void;
   updateVisuals: (speed: number, steerAngle: number, delta: number) => void;
 }
 
@@ -266,11 +329,10 @@ export class BusModelFactory {
     });
 
     // 4. 앞유리 아래쪽 컬러 얼굴 영역 (y: 550 ~ 920)
-    // 캐릭터별 하단 볼/방향지시등 장식 (일러스트 완벽 재현!)
+    // 캐릭터별 하단 볼/방향지시등 장식 (일러스트 완벽 재현 + 경찰/소방/구급차 전용 리버리!)
     if (config.id === 'tayo') {
       // 타요: 양쪽 볼 아래 노란색 곡선 삼각 스트라이프
       ctx.fillStyle = '#FFC400';
-      // 왼쪽 노란 볼 장식
       ctx.beginPath();
       ctx.moveTo(45, 790);
       ctx.quadraticCurveTo(185, 835, 310, 885);
@@ -279,7 +341,6 @@ export class BusModelFactory {
       ctx.closePath();
       ctx.fill();
 
-      // 오른쪽 노란 볼 장식
       ctx.beginPath();
       ctx.moveTo(979, 790);
       ctx.quadraticCurveTo(839, 835, 714, 885);
@@ -288,14 +349,12 @@ export class BusModelFactory {
       ctx.closePath();
       ctx.fill();
     } else if (config.id === 'rogi') {
-      // 로기: 양쪽 모서리 주황/노란 방향지시등 램프
       ctx.fillStyle = '#FFB300';
       ctx.beginPath();
       ctx.roundRect(48, 825, 165, 58, 22);
       ctx.roundRect(811, 825, 165, 58, 22);
       ctx.fill();
     } else if (config.id === 'lani') {
-      // 라니: 핑크 볼터치 + 양쪽 날렵한 흰색/주황 코너 램프
       [185, 839].forEach(bx => {
         const blushGrad = ctx.createRadialGradient(bx, 760, 8, bx, 760, 56);
         blushGrad.addColorStop(0, 'rgba(255, 105, 180, 0.55)');
@@ -310,6 +369,36 @@ export class BusModelFactory {
       ctx.roundRect(52, 815, 130, 64, 24);
       ctx.roundRect(842, 815, 130, 64, 24);
       ctx.fill();
+    } else if (config.id === 'pat') {
+      // 패트 경찰차: 흰색 하단 도어 투톤 라인 + 골드 경찰 배지 & 블루/레드 경광 램프
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 790, 1024, 155);
+      ctx.fillStyle = '#FACC15';
+      ctx.beginPath();
+      ctx.arc(512, 590, 32, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#EF4444';
+      ctx.beginPath();
+      ctx.roundRect(52, 825, 145, 54, 18);
+      ctx.fill();
+      ctx.fillStyle = '#0284C7';
+      ctx.beginPath();
+      ctx.roundRect(827, 825, 145, 54, 18);
+      ctx.fill();
+    } else if (config.id === 'frank') {
+      // 프랭크 소방차: 노란색 안전 반사 띠 + 크롬 라디에이터 그릴 포인트
+      ctx.fillStyle = '#FACC15';
+      ctx.fillRect(0, 825, 1024, 48);
+      ctx.fillStyle = '#E2E8F0';
+      ctx.beginPath();
+      ctx.roundRect(412, 562, 200, 42, 12);
+      ctx.fill();
+    } else if (config.id === 'alice') {
+      // 앨리스 구급차: 레드 스트라이프 + 정면 응급 적십자(➕) 엠블럼
+      ctx.fillStyle = '#EF4444';
+      ctx.fillRect(0, 825, 1024, 52);
+      ctx.fillRect(492, 552, 40, 96);
+      ctx.fillRect(464, 580, 96, 40);
     }
 
     // 5. 환하게 웃는 입 (하단 중앙, 일러스트처럼 하얀 치아가 보이는 입체 미소!)
@@ -438,7 +527,7 @@ export class BusModelFactory {
   /**
    * 옆면 텍스처: 일러스트(tayo_rani_gani_rogi.jpg)와 동일하게
    * - 상단 짙은 네이비 통유리 창문 4칸 + 검은 창틀 몰딩
-   * - 차체 측면에 큼직하게 적힌 검은색 노선 번호(120, 1000, 02, 1339)
+   * - 차체 측면에 큼직하게 적힌 검은색 노선 번호(120, 1000, 02, 1339) 또는 POLICE 112 / FIRE 119 / AMBULANCE 119
    * - 측면 노란 방향지시등 및 하단 다크그레이 사이드 스커트 몰딩
    */
   private static createSideTexture(config: BusConfig, isRightSide: boolean): THREE.CanvasTexture {
@@ -450,6 +539,36 @@ export class BusModelFactory {
     // 1. 바디 메인 컬러
     ctx.fillStyle = config.bodyHex;
     ctx.fillRect(0, 0, 1024, 512);
+
+    // 경찰차/소방차/구급차 전용 측면 리버리 스트라이프
+    if (config.id === 'pat') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 290, 1024, 162);
+      ctx.fillStyle = '#38BDF8';
+      ctx.fillRect(0, 276, 1024, 16);
+    } else if (config.id === 'frank') {
+      ctx.fillStyle = '#FACC15';
+      ctx.fillRect(0, 395, 1024, 38);
+      // 소방 장비 셔터 디테일
+      ctx.fillStyle = '#CBD5E1';
+      ctx.fillRect(180, 282, 160, 100);
+      ctx.strokeStyle = '#64748B';
+      ctx.lineWidth = 4;
+      for (let sy = 294; sy < 375; sy += 14) {
+        ctx.beginPath();
+        ctx.moveTo(185, sy);
+        ctx.lineTo(335, sy);
+        ctx.stroke();
+      }
+    } else if (config.id === 'alice') {
+      ctx.fillStyle = '#EF4444';
+      ctx.fillRect(0, 305, 1024, 46);
+      // 측면 적십자 마크
+      const crossX = isRightSide ? 210 : 814;
+      ctx.fillStyle = '#EF4444';
+      ctx.fillRect(crossX - 18, 345, 36, 96);
+      ctx.fillRect(crossX - 48, 375, 96, 36);
+    }
 
     // 하단 다크 그레이 사이드 스커트 라인
     ctx.fillStyle = '#262B30';
@@ -501,15 +620,35 @@ export class BusModelFactory {
     ctx.roundRect(doorX, winTop, 170, 395, 14);
     ctx.stroke();
 
-    // 3. 측면 차체 노선 번호 (일러스트처럼 창문 아래 차체에 굵은 블랙 텍스트로 120 / 1000 / 02 / 1339 표시!)
-    const numX = isRightSide ? 390 : 634;
+    // 3. 측면 차체 노선 번호 또는 긴급차량 콜사인 표시
+    const numX = isRightSide ? 425 : 599;
     const numY = 352;
 
-    ctx.fillStyle = '#11151C';
-    ctx.font = '900 84px "Arial Black", "Nanum Gothic", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(config.number, numX, numY);
+    if (config.id === 'pat') {
+      ctx.fillStyle = '#1E3A8A';
+      ctx.font = '900 68px "Arial Black", "Nanum Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('POLICE 112', numX, numY + 14);
+    } else if (config.id === 'frank') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '900 72px "Arial Black", "Nanum Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FIRE 119', numX + (isRightSide ? 65 : -65), numY - 8);
+    } else if (config.id === 'alice') {
+      ctx.fillStyle = '#1E293B';
+      ctx.font = '900 66px "Arial Black", "Nanum Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('119 구급대', numX, numY + 42);
+    } else {
+      ctx.fillStyle = '#11151C';
+      ctx.font = '900 84px "Arial Black", "Nanum Gothic", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(config.number, numX, numY);
+    }
 
     // 측면 작은 주황색 보조 방향지시등
     const blinkerX = isRightSide ? 875 : 149;
@@ -536,6 +675,14 @@ export class BusModelFactory {
     ctx.fillStyle = config.bodyHex;
     ctx.fillRect(0, 0, 512, 512);
 
+    if (config.id === 'alice') {
+      ctx.fillStyle = '#EF4444';
+      ctx.fillRect(0, 320, 512, 36);
+    } else if (config.id === 'frank') {
+      ctx.fillStyle = '#FACC15';
+      ctx.fillRect(0, 325, 512, 32);
+    }
+
     // 뒷유리창
     ctx.fillStyle = '#11151C';
     ctx.beginPath();
@@ -550,7 +697,7 @@ export class BusModelFactory {
     // 후면 노선번호 뱃지
     ctx.fillStyle = '#14181F';
     ctx.beginPath();
-    ctx.roundRect(176, 268, 160, 58, 14);
+    ctx.roundRect(156, 268, 200, 58, 14);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 40px "Arial Black", sans-serif';
@@ -654,7 +801,7 @@ export class BusModelFactory {
     noseMesh.position.set(0, eyeY - 0.04, bodyL / 2 + 0.055);
     chassisGroup.add(noseMesh);
 
-    // 5. 지붕 위 3D 루프 에어컨 유닛 (캐릭터별 슬릿 디테일 반영)
+    // 5. 지붕 위 3D 루프 에어컨 유닛 & 긴급차량 전용 경광등/사다리/물대포
     const roofPodW = bodyW * 0.62;
     const roofPodH = 0.28;
     const roofPodL = 1.55;
@@ -678,6 +825,71 @@ export class BusModelFactory {
         slot.position.set(sx, bodyCenterY + bodyH / 2 + 0.12, 0.18 + roofPodL / 2 + 0.01);
         chassisGroup.add(slot);
       });
+    }
+
+    // 경광등(Siren Lightbar) & 소방차 사다리/물대포 장착
+    let sirenActive = false;
+    let redSirenMat: THREE.MeshBasicMaterial | null = null;
+    let blueSirenMat: THREE.MeshBasicMaterial | null = null;
+    let sirenLight: THREE.PointLight | null = null;
+
+    if (config.hasSiren) {
+      const barY = bodyCenterY + bodyH / 2 + 0.26;
+      const barZ = bodyL * 0.26;
+
+      const baseBar = new THREE.Mesh(
+        new THREE.BoxGeometry(1.16, 0.08, 0.28),
+        new THREE.MeshStandardMaterial({ color: 0xCBD5E1, metalness: 0.6, roughness: 0.2 })
+      );
+      baseBar.position.set(0, barY, barZ);
+      chassisGroup.add(baseBar);
+
+      redSirenMat = new THREE.MeshBasicMaterial({ color: 0xFF1744 });
+      blueSirenMat = new THREE.MeshBasicMaterial({ color: config.id === 'pat' ? 0x00B0FF : 0xFF5252 });
+
+      const redLamp = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.18, 0.24), redSirenMat);
+      redLamp.position.set(-0.28, barY + 0.1, barZ);
+      const blueLamp = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.18, 0.24), blueSirenMat);
+      blueLamp.position.set(0.28, barY + 0.1, barZ);
+      chassisGroup.add(redLamp, blueLamp);
+
+      sirenLight = new THREE.PointLight(0xFF1744, 0, 18);
+      sirenLight.position.set(0, barY + 0.4, barZ);
+      chassisGroup.add(sirenLight);
+    }
+
+    // 소방차 프랭크 전용: 루프 은색 사다리 + 회전식 방수포(물대포) 노즐
+    if (config.id === 'frank') {
+      const ladderGroup = new THREE.Group();
+      const ladderMat = new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 0.65, roughness: 0.25 });
+      const railL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 2.2), ladderMat);
+      railL.position.x = -0.28;
+      const railR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 2.2), ladderMat);
+      railR.position.x = 0.28;
+      ladderGroup.add(railL, railR);
+      for (let rz = -0.9; rz <= 0.9; rz += 0.3) {
+        const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.56, 8), ladderMat);
+        rung.rotation.z = Math.PI / 2;
+        rung.position.z = rz;
+        ladderGroup.add(rung);
+      }
+      ladderGroup.position.set(0, bodyCenterY + bodyH / 2 + 0.3, -0.35);
+      chassisGroup.add(ladderGroup);
+
+      // 방수포 노즐
+      const cannonBase = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.18, 0.24, 12),
+        new THREE.MeshStandardMaterial({ color: 0xFACC15, metalness: 0.4 })
+      );
+      cannonBase.position.set(0, bodyCenterY + bodyH / 2 + 0.32, 0.95);
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.08, 0.55, 12),
+        new THREE.MeshStandardMaterial({ color: 0x94A3B8, metalness: 0.7 })
+      );
+      barrel.rotation.x = Math.PI / 2.6;
+      barrel.position.set(0, 0.16, 0.22);
+      cannonBase.add(barrel);
+      chassisGroup.add(cannonBase);
     }
 
     // 6. 하단 다크 그레이 입체 앞/뒤 범퍼 & 안개등
@@ -876,6 +1088,15 @@ export class BusModelFactory {
       });
     };
 
+    const setSirenActive = (active: boolean) => {
+      sirenActive = active;
+      if (!active && redSirenMat && blueSirenMat && sirenLight) {
+        redSirenMat.color.setHex(0x991B1B);
+        blueSirenMat.color.setHex(config.id === 'pat' ? 0x1E3A8A : 0x991B1B);
+        sirenLight.intensity = 0;
+      }
+    };
+
     const updateVisuals = (speed: number, steerAngle: number, delta: number) => {
       // 바퀴 회전
       const rotDelta = speed * 0.075;
@@ -887,6 +1108,15 @@ export class BusModelFactory {
       steerPivots.forEach(pivot => {
         pivot.rotation.y = steerAngle;
       });
+
+      // 경광등 교차 스트로브 점멸
+      if (sirenActive && redSirenMat && blueSirenMat && sirenLight) {
+        const phase = Math.floor(Date.now() / 130) % 2 === 0;
+        redSirenMat.color.setHex(phase ? 0xFF1744 : 0x450A0A);
+        blueSirenMat.color.setHex(phase ? 0x1E293B : (config.id === 'pat' ? 0x00E5FF : 0xFFEB3B));
+        sirenLight.color.setHex(phase ? 0xFF1744 : (config.id === 'pat' ? 0x00E5FF : 0xFF9100));
+        sirenLight.intensity = 3.5;
+      }
 
       // 시선이 조향 방향을 따라 살짝 돌아가는 생동감 있는 눈동자 연출!
       const eyeLookOffset = THREE.MathUtils.clamp(steerAngle * 0.35, -0.18, 0.18);
@@ -944,17 +1174,217 @@ export class BusModelFactory {
       setExpression,
       setDoorOpen,
       setNightLights,
+      setSirenActive,
       updateVisuals
     };
   }
 
   /**
-   * 마을을 순찰하는 귀여운 AI 친구 차량 생성 (패트 경찰차, 프랭크 소방차, 앨리스 구급차, 다른 꼬마버스)
+   * F1 레이싱카 (페라리 스쿠데리아 / 메르세데스-AMG 페트로나스) 정밀 3D 모델 생성
    */
-  public static createNpcCarMesh(type: 'pat' | 'frank' | 'alice' | 'rogi' | 'lani'): {
+  private static createF1CarMesh(team: 'ferrari_f1' | 'mercedes_f1'): {
     mesh: THREE.Group;
     wheelMeshes: THREE.Object3D[];
     headlights: THREE.Light[];
+  } {
+    const group = new THREE.Group();
+    const wheelMeshes: THREE.Object3D[] = [];
+    const headlights: THREE.Light[] = [];
+
+    const isFerrari = team === 'ferrari_f1';
+    const primaryColor = isFerrari ? 0xDC0000 : 0xCBD5E1; // Ferrari Rosso Corsa vs Mercedes Silver Arrow
+    const secondaryColor = isFerrari ? 0x11151C : 0x00D2BE; // Carbon Black vs Petronas Turquoise
+    const accentHex = isFerrari ? 0xFFEB3B : 0x00D2BE; // Scuderia Yellow vs Petronas Mint
+
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: primaryColor,
+      roughness: 0.18,
+      metalness: isFerrari ? 0.25 : 0.65
+    });
+    const carbonMat = new THREE.MeshStandardMaterial({
+      color: 0x14181F,
+      roughness: 0.35,
+      metalness: 0.3
+    });
+    const accentMat = new THREE.MeshBasicMaterial({ color: accentHex });
+
+    // 1. 언더바디 플로어 & 디퓨저 (Floor Plank)
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.07, 4.4), carbonMat);
+    floor.position.set(0, 0.16, 0);
+    floor.castShadow = true;
+    group.add(floor);
+
+    // 2. 모노코크 콕핏 & 테이퍼드 노즈콘 (Aerodynamic Nose Cone)
+    const monocoque = new THREE.Mesh(
+      this.createRoundedBoxGeometry(0.76, 0.44, 2.3, 0.12, 4),
+      bodyMat
+    );
+    monocoque.position.set(0, 0.38, -0.1);
+    monocoque.castShadow = true;
+    group.add(monocoque);
+
+    // 뾰족하게 뻗은 노즈콘
+    const noseCone = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.34, 1.55, 16),
+      bodyMat
+    );
+    noseCone.rotation.x = Math.PI / 2;
+    noseCone.position.set(0, 0.3, 1.65);
+    noseCone.castShadow = true;
+    group.add(noseCone);
+
+    // 노즈 위 레이싱 넘버 & 팀 스트라이프
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 1.4), accentMat);
+    stripe.position.set(0, 0.44, 1.4);
+    group.add(stripe);
+
+    // 3. 좌우 사이드포드 (Sidepods) + 페트로나스/페라리 컬러 포인트
+    [-0.56, 0.56].forEach(sx => {
+      const pod = new THREE.Mesh(
+        this.createRoundedBoxGeometry(0.46, 0.38, 1.75, 0.1, 4),
+        bodyMat
+      );
+      pod.position.set(sx, 0.35, -0.25);
+      pod.castShadow = true;
+      group.add(pod);
+
+      const podStripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.48, 0.08, 1.55),
+        new THREE.MeshBasicMaterial({ color: secondaryColor })
+      );
+      podStripe.position.set(sx, 0.36, -0.22);
+      group.add(podStripe);
+    });
+
+    // 4. 에어박스 롤후프 & 샤크핀 엔진 커버 (Airbox & Shark Fin)
+    const airbox = new THREE.Mesh(
+      this.createRoundedBoxGeometry(0.42, 0.48, 1.15, 0.09, 4),
+      bodyMat
+    );
+    airbox.position.set(0, 0.72, -0.58);
+    group.add(airbox);
+
+    const sharkFin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.42, 1.25),
+      isFerrari ? bodyMat : carbonMat
+    );
+    sharkFin.position.set(0, 0.82, -1.25);
+    group.add(sharkFin);
+
+    // 5. 헤일로(Halo) 티타늄 안전 바 & 드라이버 헬멧
+    const haloRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.32, 0.038, 8, 20, Math.PI),
+      carbonMat
+    );
+    haloRing.rotation.x = Math.PI / 2;
+    haloRing.position.set(0, 0.68, 0.15);
+    group.add(haloRing);
+
+    const haloPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.26, 8), carbonMat);
+    haloPillar.rotation.x = -0.35;
+    haloPillar.position.set(0, 0.6, 0.45);
+    group.add(haloPillar);
+
+    // 드라이버 헬멧 & 고글 바이저
+    const helmet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.19, 16, 16),
+      new THREE.MeshStandardMaterial({ color: isFerrari ? 0xFF1744 : 0xFACC15, roughness: 0.15 })
+    );
+    helmet.position.set(0, 0.66, 0.05);
+    group.add(helmet);
+
+    const visor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.195, 16, 16, 0, Math.PI * 0.75, Math.PI * 0.28, Math.PI * 0.32),
+      new THREE.MeshBasicMaterial({ color: 0x0F172A })
+    );
+    visor.rotation.y = Math.PI * 0.12;
+    visor.position.set(0, 0.66, 0.06);
+    group.add(visor);
+
+    // 6. 멀티 엘리먼트 프론트 윙 (Front Wing + Endplates)
+    const frontWingGroup = new THREE.Group();
+    frontWingGroup.position.set(0, 0.16, 2.32);
+    const fwMain = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.05, 0.42), carbonMat);
+    const fwFlap = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.04, 0.22), accentMat);
+    fwFlap.position.set(0, 0.05, -0.08);
+    frontWingGroup.add(fwMain, fwFlap);
+    [-0.98, 0.98].forEach(ex => {
+      const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.48), bodyMat);
+      endplate.position.set(ex, 0.1, 0);
+      frontWingGroup.add(endplate);
+    });
+    group.add(frontWingGroup);
+
+    // 7. 하이 다운포스 리어 윙 (Rear Wing + DRS Flap + FIA Rain Light)
+    const rearWingGroup = new THREE.Group();
+    rearWingGroup.position.set(0, 0.86, -2.02);
+    const rwMain = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.07, 0.36), carbonMat);
+    const rwTop = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 0.08), accentMat);
+    rwTop.position.set(0, 0.1, -0.12);
+    rearWingGroup.add(rwMain, rwTop);
+    [-0.72, 0.72].forEach(ex => {
+      const rwEnd = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.56, 0.48), bodyMat);
+      rwEnd.position.set(ex, -0.12, 0);
+      rearWingGroup.add(rwEnd);
+    });
+    group.add(rearWingGroup);
+
+    // 리어 레인 라이트 (붉은 LED 블링커)
+    const rainLight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.14, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xFF1744 })
+    );
+    rainLight.position.set(0, 0.32, -2.22);
+    group.add(rainLight);
+
+    // 8. 피렐리 광폭 오픈휠 슬릭 타이어 4개 (Pirelli P-Zero Slicks)
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x161920, roughness: 0.65 });
+    const ringMat = new THREE.MeshBasicMaterial({ color: isFerrari ? 0xFF1744 : 0x00D2BE });
+    const wheelConfigs = [
+      { x: -0.92, z: 1.48, r: 0.36, w: 0.36 },
+      { x: 0.92, z: 1.48, r: 0.36, w: 0.36 },
+      { x: -0.95, z: -1.42, r: 0.39, w: 0.44 },
+      { x: 0.95, z: -1.42, r: 0.39, w: 0.44 }
+    ];
+
+    wheelConfigs.forEach(wc => {
+      // 서스펜션 위시본 암
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, Math.abs(wc.x), 6), carbonMat);
+      arm.rotation.z = Math.PI / 2;
+      arm.position.set(wc.x * 0.5, wc.r, wc.z);
+      group.add(arm);
+
+      const wGroup = new THREE.Group();
+      wGroup.position.set(wc.x, wc.r, wc.z);
+
+      const tireGeom = new THREE.CylinderGeometry(wc.r, wc.r, wc.w, 24);
+      tireGeom.rotateZ(Math.PI / 2);
+      const tire = new THREE.Mesh(tireGeom, tireMat);
+      tire.castShadow = true;
+      wGroup.add(tire);
+
+      // 피렐리 컬러 링
+      const ringGeom = new THREE.TorusGeometry(wc.r * 0.72, 0.028, 8, 24);
+      ringGeom.rotateY(Math.PI / 2);
+      const ringOut = new THREE.Mesh(ringGeom, ringMat);
+      ringOut.position.x = wc.x > 0 ? wc.w / 2 + 0.005 : -wc.w / 2 - 0.005;
+      wGroup.add(ringOut);
+
+      group.add(wGroup);
+      wheelMeshes.push(wGroup);
+    });
+
+    return { mesh: group, wheelMeshes, headlights };
+  }
+
+  /**
+   * 마을을 순찰하는 AI 차량 생성 (경찰차, 소방차, 구급차, F1 페라리/메르세데스, 중립 승용차/SUV)
+   */
+  public static createNpcCarMesh(type: NpcVehicleKind | 'rogi' | 'lani'): {
+    mesh: THREE.Group;
+    wheelMeshes: THREE.Object3D[];
+    headlights: THREE.Light[];
+    sirenMeshes?: THREE.Mesh[];
   } {
     if (type === 'rogi' || type === 'lani') {
       const bus = this.createBusVisual(type);
@@ -965,33 +1395,68 @@ export class BusModelFactory {
       };
     }
 
+    if (type === 'ferrari_f1' || type === 'mercedes_f1') {
+      return this.createF1CarMesh(type);
+    }
+
     const group = new THREE.Group();
     const wheelMeshes: THREE.Object3D[] = [];
     const headlights: THREE.Light[] = [];
+    const sirenMeshes: THREE.Mesh[] = [];
 
     const isFrank = type === 'frank';
-    const mainColor = type === 'pat' ? 0x1E3A8A : isFrank ? 0xDC2626 : 0xFFFFFF;
-    const subColor = type === 'pat' ? 0xFFFFFF : isFrank ? 0xFBBF24 : 0xEF4444;
+    const isEmergency = type === 'pat' || type === 'frank' || type === 'alice';
 
-    const bodyW = isFrank ? 1.95 : 1.75;
-    const bodyH = isFrank ? 1.85 : 1.45;
-    const bodyL = isFrank ? 3.6 : 2.95;
+    const mainColor =
+      type === 'pat'
+        ? 0x1E3A8A
+        : type === 'frank'
+          ? 0xDC2626
+          : type === 'alice'
+            ? 0xFFFFFF
+            : type === 'sedan_yellow'
+              ? 0xFACC15
+              : 0x10B981;
+
+    const subColor =
+      type === 'pat'
+        ? 0xFFFFFF
+        : type === 'frank'
+          ? 0xFBBF24
+          : type === 'alice'
+            ? 0xEF4444
+            : type === 'sedan_yellow'
+              ? 0xFEF08A
+              : 0xD1FAE5;
+
+    const bodyW = isFrank ? 1.98 : 1.78;
+    const bodyH = isFrank ? 1.92 : 1.48;
+    const bodyL = isFrank ? 3.75 : 3.05;
 
     // 하단 차체
     const lowerGeom = this.createRoundedBoxGeometry(bodyW, bodyH * 0.58, bodyL, 0.14, 4);
-    const lowerMat = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.3 });
+    const lowerMat = new THREE.MeshStandardMaterial({ color: mainColor, roughness: 0.28 });
     const lowerMesh = new THREE.Mesh(lowerGeom, lowerMat);
-    lowerMesh.position.y = 0.4 + bodyH * 0.29;
+    lowerMesh.position.y = 0.38 + bodyH * 0.29;
     lowerMesh.castShadow = true;
+    lowerMesh.receiveShadow = true;
     group.add(lowerMesh);
 
     // 상단 캐빈
-    const cabinGeom = this.createRoundedBoxGeometry(bodyW * 0.88, bodyH * 0.48, bodyL * 0.68, 0.12, 4);
-    const cabinMat = new THREE.MeshStandardMaterial({ color: subColor, roughness: 0.3 });
+    const cabinGeom = this.createRoundedBoxGeometry(bodyW * 0.88, bodyH * 0.48, bodyL * 0.66, 0.12, 4);
+    const cabinMat = new THREE.MeshStandardMaterial({ color: subColor, roughness: 0.28 });
     const cabinMesh = new THREE.Mesh(cabinGeom, cabinMat);
-    cabinMesh.position.set(0, 0.4 + bodyH * 0.75, -0.15);
+    cabinMesh.position.set(0, 0.38 + bodyH * 0.75, -0.12);
     cabinMesh.castShadow = true;
     group.add(cabinMesh);
+
+    // 앞유리창
+    const windshield = new THREE.Mesh(
+      new THREE.PlaneGeometry(bodyW * 0.76, bodyH * 0.34),
+      new THREE.MeshBasicMaterial({ color: 0x1E293B })
+    );
+    windshield.position.set(0, 0.38 + bodyH * 0.76, bodyL * 0.33 - 0.11);
+    group.add(windshield);
 
     // 귀여운 눈 2개
     const eyeGeom = new THREE.SphereGeometry(0.18, 16, 16);
@@ -1000,25 +1465,58 @@ export class BusModelFactory {
     [-0.42, 0.42].forEach(ex => {
       const eye = new THREE.Mesh(eyeGeom, eyeMat);
       eye.rotation.y = -Math.PI / 2;
-      eye.position.set(ex, 0.4 + bodyH * 0.68, bodyL * 0.34 + 0.02);
+      eye.position.set(ex, 0.38 + bodyH * 0.45, bodyL * 0.5 + 0.02);
       group.add(eye);
     });
 
-    // 경광등 (사이렌 바)
-    const sirenGroup = new THREE.Group();
-    sirenGroup.position.set(0, 0.4 + bodyH + 0.06, -0.1);
-    const redSiren = new THREE.Mesh(
-      new THREE.BoxGeometry(0.45, 0.16, 0.24),
-      new THREE.MeshBasicMaterial({ color: 0xFF1744 })
-    );
-    redSiren.position.x = -0.24;
-    const blueSiren = new THREE.Mesh(
-      new THREE.BoxGeometry(0.45, 0.16, 0.24),
-      new THREE.MeshBasicMaterial({ color: 0x00B0FF })
-    );
-    blueSiren.position.x = 0.24;
-    sirenGroup.add(redSiren, blueSiren);
-    group.add(sirenGroup);
+    // 헤드라이트 2개
+    const hlMat = new THREE.MeshBasicMaterial({ color: 0xFFFDE7 });
+    [-bodyW * 0.32, bodyW * 0.32].forEach(hx => {
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), hlMat);
+      hl.position.set(hx, 0.55, bodyL * 0.5 + 0.01);
+      group.add(hl);
+    });
+
+    // 긴급차량 전용 경광등 & 디테일
+    if (isEmergency) {
+      const sirenGroup = new THREE.Group();
+      sirenGroup.position.set(0, 0.38 + bodyH + 0.06, -0.05);
+      const redSiren = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.16, 0.24),
+        new THREE.MeshBasicMaterial({ color: 0xFF1744 })
+      );
+      redSiren.position.x = -0.25;
+      const blueSiren = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.16, 0.24),
+        new THREE.MeshBasicMaterial({ color: type === 'pat' ? 0x00B0FF : 0xFF9100 })
+      );
+      blueSiren.position.x = 0.25;
+      sirenGroup.add(redSiren, blueSiren);
+      group.add(sirenGroup);
+      sirenMeshes.push(redSiren, blueSiren);
+
+      // 구급차 적십자 마크
+      if (type === 'alice') {
+        const crossMat = new THREE.MeshBasicMaterial({ color: 0xEF4444 });
+        [-1, 1].forEach(side => {
+          const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.42, 0.14), crossMat);
+          const hBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.42), crossMat);
+          vBar.position.set(side * (bodyW / 2 + 0.01), 0.95, -0.2);
+          hBar.position.set(side * (bodyW / 2 + 0.01), 0.95, -0.2);
+          group.add(vBar, hBar);
+        });
+      }
+
+      // 소방차 루프 사다리
+      if (type === 'frank') {
+        const ladder = new THREE.Mesh(
+          new THREE.BoxGeometry(0.52, 0.1, 1.9),
+          new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 0.6 })
+        );
+        ladder.position.set(0, 0.38 + bodyH + 0.08, -0.45);
+        group.add(ladder);
+      }
+    }
 
     // 바퀴 4개
     const wGeom = new THREE.CylinderGeometry(0.36, 0.36, 0.26, 16);
@@ -1036,6 +1534,6 @@ export class BusModelFactory {
       wheelMeshes.push(w);
     });
 
-    return { mesh: group, wheelMeshes, headlights };
+    return { mesh: group, wheelMeshes, headlights, sirenMeshes };
   }
 }

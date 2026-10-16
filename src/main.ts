@@ -75,6 +75,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'KeyE':
         game.openLearningNow();
         break;
+      case 'KeyF':
+        game.triggerSirenAndWaterCannon();
+        break;
+      case 'KeyQ':
+        game.startNextEmergencyDispatch();
+        break;
     }
   });
 
@@ -141,6 +147,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
       game.honk();
     });
+  }
+
+  // 사이렌 & 소방 물대포 버튼
+  const btnSiren = document.getElementById('btn-siren');
+  if (btnSiren) {
+    btnSiren.addEventListener('click', (e) => {
+      e.preventDefault();
+      game.triggerSirenAndWaterCannon();
+    });
+  }
+
+  // 긴급출동 미션 시작 버튼
+  const btnDispatch = document.getElementById('btn-dispatch');
+  if (btnDispatch) {
+    btnDispatch.addEventListener('click', () => game.startNextEmergencyDispatch());
   }
 
   // 카메라 시점 전환 버튼
@@ -213,6 +234,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nameSpan = document.getElementById('current-bus-name');
         if (nameSpan) {
           nameSpan.textContent = BUS_CONFIGS[charId].name;
+        }
+        const iconSpan = btnOpenSelect?.querySelector('span:first-child');
+        if (iconSpan) {
+          iconSpan.textContent = charId === 'pat' ? '🚔' : charId === 'frank' ? '🚒' : charId === 'alice' ? '🚑' : '🚌';
+        }
+        if (charId === 'pat' || charId === 'frank' || charId === 'alice') {
+          soundManager.playSiren(charId === 'pat' ? 'police' : charId === 'frank' ? 'fire' : 'ambulance');
+          game.showPopup(`🚨 ${BUS_CONFIGS[charId].name} 출동 준비 완료! (🚨 버튼으로 사이렌·물대포를 써보세요!)`);
+        } else {
+          game.showPopup(`🚌 ${BUS_CONFIGS[charId].name}(으)로 변신 완료! 신나게 달려볼까요?`);
         }
 
         if (modal) modal.classList.add('hidden');

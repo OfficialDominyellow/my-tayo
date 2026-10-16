@@ -4,7 +4,15 @@ import { WorldManager } from './world';
 import { BusModelFactory, BusVisualInstance } from './bus-model';
 import { soundManager } from './sound';
 import { educationManager } from './education';
-import { BusStopData, BusType, CameraMode, DebugMetrics, InputState, TimeOfDay } from './types';
+import {
+  BusStopData,
+  BusType,
+  CameraMode,
+  DebugMetrics,
+  EmergencyDispatchMission,
+  InputState,
+  TimeOfDay
+} from './types';
 
 export class TayoGame {
   private container: HTMLElement;
@@ -27,6 +35,13 @@ export class TayoGame {
     targetStopName: string;
     mesh: THREE.Group;
   } | null = null;
+  public activeDispatch: EmergencyDispatchMission | null = null;
+  private dispatchIndex: number = 0;
+  public isSirenOn: boolean = false;
+  private sirenLoopTimer: number = 0;
+  private f1SoundCooldown: number = 0;
+  private pedestrianBonusCooldown: number = 0;
+
   private guideArrow: THREE.Group | null = null;
   private guideDots: THREE.Mesh[] = [];
 
@@ -71,10 +86,10 @@ export class TayoGame {
     // 1. Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x87CEEB);
-    this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0045);
+    this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0032);
 
-    // 2. Camera (확장된 월드를 시원하게 볼 수 있도록 far 클리핑 확장)
-    this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 480);
+    // 2. Camera (확장된 520m 월드를 시원하게 볼 수 있도록 far 클리핑 확장)
+    this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 560);
     this.camera.position.set(0, 10, -15);
 
     // 3. WebGLRenderer (색감 및 톤매핑 개선)
@@ -108,13 +123,13 @@ export class TayoGame {
     this.scene.add(this.hemiLight);
 
     this.dirLight = new THREE.DirectionalLight(0xFFFDF0, 1.15);
-    this.dirLight.position.set(65, 95, 55);
+    this.dirLight.position.set(75, 110, 65);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 10;
-    this.dirLight.shadow.camera.far = 260;
-    const d = 95;
+    this.dirLight.shadow.camera.far = 320;
+    const d = 125;
     this.dirLight.shadow.camera.left = -d;
     this.dirLight.shadow.camera.right = d;
     this.dirLight.shadow.camera.top = d;
@@ -130,8 +145,8 @@ export class TayoGame {
     // 4. 내비게이션 목적지 안내 화살표 & 바닥 무지개 유도선
     this.createGuideVisuals();
 
-    // 5. 차량 물리 및 비주얼 버스 생성 (타요 차고지 정류장 앞 스폰)
-    this.physics.createVehicle(-3.5, 1.2, 10, 0);
+    // 5. 차량 물리 및 비주얼 버스 생성 (중앙 로터리 북쪽 도로 스폰)
+    this.physics.createVehicle(-3.5, 1.2, 22, 0);
     this.spawnVisualBus(this.currentBusType);
 
     // 6. 4세 놀이학습 매니저 초기화
@@ -177,7 +192,7 @@ export class TayoGame {
     }
   }
 
-  // 비주얼 버스 교체 (타요, 로기, 라니, 가니)
+  // 비주얼 차량 교체 (타요, 로기, 라니, 가니 + 패트 경찰차, 프랭크 소방차, 앨리스 구급차!)
   public spawnVisualBus(busType: BusType): void {
     if (this.visualBus) {
       this.scene.remove(this.visualBus.root);
@@ -189,8 +204,141 @@ export class TayoGame {
     this.visualBus.setExpression('happy', 3.0);
     this.scene.add(this.visualBus.root);
 
+    // 긴급차량(패트/프랭크/앨리스) 선택 시 자동으로 경광등 ON!
+    const isEmergency = busType === 'pat' || busType === 'frank' || busType === 'alice';
+    this.isSirenOn = isEmergency;
+    this.visualBus.setSirenActive(this.isSirenOn);
+    if (isEmergency) {
+      const sirenKind = busType === 'pat' ? 'police' : busType === 'frank' ? 'fire' : 'ambulance';
+      soundManager.playSiren(sirenKind);
+    }
+
+    const sirenBtn = document.getElementById('btn-siren');
+    if (sirenBtn) {
+      sirenBtn.classList.toggle('active-toggle', this.isSirenOn);
+      sirenBtn.textContent = busType === 'frank' ? '💦 물대포·사이렌' : '🚨 사이렌·물대포';
+    }
+
     soundManager.speak(this.visualBus.config.voiceIntro);
-    this.showPopup(`🚌 ${this.visualBus.config.name} (${this.visualBus.config.number}번) 탑승!`);
+    const roleIcon =
+      busType === 'pat' ? '🚓' : busType === 'frank' ? '🚒' : busType === 'alice' ? '🚑' : '🚌';
+    this.showPopup(`${roleIcon} ${this.visualBus.config.name} (${this.visualBus.config.number}) 출동 준비 완료!`);
+  }
+
+  /**
+   * 🚨 사이렌 경광등 토글 및 💦 소방 물대포 발사!
+   */
+  public triggerSirenAndWaterCannon(): void {
+    if (!this.visualBus) return;
+
+    const { position: busPos, quaternion: busQuat } = this.physics.getChassisTransform();
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(busQuat);
+
+    // 1. 물대포 발사 (프랭크 소방차이거나 소방서 근처일 때 언제든 시원한 물줄기 발사!)
+    soundManager.playWaterSplash();
+    const sprayRes = this.world.sprayWaterAtFire(busPos, forward);
+    if (sprayRes.extinguishedFire) {
+      soundManager.playCelebration();
+      soundManager.speak('우와! 물대포로 일일구 소방서 훈련 타워의 불을 완전히 껐어요! 최고 소방대원이에요!');
+      this.addStar('🚒💦 물대포로 화재 진압 성공! 용감한 119 소방대원!', 3);
+      this.visualBus.setExpression('happy', 4.0);
+      if (this.activeDispatch && this.activeDispatch.stationType === 'fire_station') {
+        this.completeEmergencyDispatch();
+      }
+      return;
+    }
+
+    // 2. 사이렌 경광등 ON/OFF 토글
+    this.isSirenOn = !this.isSirenOn;
+    this.visualBus.setSirenActive(this.isSirenOn);
+    const sirenBtn = document.getElementById('btn-siren');
+    if (sirenBtn) {
+      sirenBtn.classList.toggle('active-toggle', this.isSirenOn);
+    }
+
+    if (this.isSirenOn) {
+      const kind =
+        this.currentBusType === 'frank'
+          ? 'fire'
+          : this.currentBusType === 'alice'
+          ? 'ambulance'
+          : 'police';
+      soundManager.playSiren(kind);
+      this.visualBus.setExpression('wink', 2.0);
+      this.showPopup('🚨 삐뽀삐뽀! 긴급 출동 사이렌 & 물대포 발사!');
+    } else {
+      this.showPopup('🔕 사이렌 경광등을 껐어요.');
+    }
+  }
+
+  /**
+   * 🚨 경찰서 · 소방서 · 병원 긴급출동 미션 시작!
+   */
+  public startNextEmergencyDispatch(): void {
+    const missions: EmergencyDispatchMission[] = [
+      {
+        id: 'dispatch_fire',
+        title: '🚒 [119 긴급출동] 소방서 훈련 타워에 불이 났어요! 출동해서 물대포를 쏘세요!',
+        icon: '🚒',
+        stationType: 'fire_station',
+        targetX: -82,
+        targetZ: 95,
+        voiceIntro: '일일구 긴급출동! 용감한 소방서 훈련 타워에 불이 났어요! 소방서로 달려가 물대포로 불을 꺼주세요!'
+      },
+      {
+        id: 'dispatch_police',
+        title: '🚓 [112 긴급출동] 112 용감한 경찰서로 출동해 안전 순찰을 완료하세요!',
+        icon: '🚓',
+        stationType: 'police_station',
+        targetX: -84,
+        targetZ: 36.5,
+        voiceIntro: '일일이 긴급출동! 용감한 경찰서로 출동해서 우리 동네 안전 순찰 미션을 완료해 주세요!'
+      },
+      {
+        id: 'dispatch_hospital',
+        title: '🏥 [구급 긴급출동] 튼튼 어린이 종합병원 응급실로 구급 상자를 전달하세요!',
+        icon: '🏥',
+        stationType: 'hospital',
+        targetX: 84,
+        targetZ: -19.5,
+        voiceIntro: '삐뽀삐뽀 구급 출동! 튼튼 어린이 종합병원으로 빠르게 달려가 응급 치료를 도와주세요!'
+      }
+    ];
+
+    this.activeDispatch = missions[this.dispatchIndex % missions.length];
+    this.dispatchIndex++;
+
+    // 사이렌 자동 점등
+    this.isSirenOn = true;
+    this.visualBus?.setSirenActive(true);
+    const sirenKind =
+      this.activeDispatch.stationType === 'fire_station'
+        ? 'fire'
+        : this.activeDispatch.stationType === 'hospital'
+        ? 'ambulance'
+        : 'police';
+    soundManager.playSiren(sirenKind);
+
+    if (this.guideArrow) {
+      this.guideArrow.position.set(this.activeDispatch.targetX, 5.2, this.activeDispatch.targetZ);
+    }
+
+    soundManager.speak(this.activeDispatch.voiceIntro);
+    this.showPopup(this.activeDispatch.title);
+    this.updateMissionBanner();
+  }
+
+  private completeEmergencyDispatch(): void {
+    if (!this.activeDispatch) return;
+    const finished = this.activeDispatch;
+    this.activeDispatch = null;
+    if (!this.targetStop && this.guideArrow) {
+      this.guideArrow.position.set(0, -999, 0);
+    }
+
+    soundManager.playCelebration();
+    this.addStar(`${finished.icon} 긴급출동 미션 대성공! 우리 동네 영웅이에요!`, 3);
+    this.updateMissionBanner();
   }
 
   // 낮 / 노을 / 밤 시간대 전환 (헤드라이트 및 가로등 점등!)
@@ -198,7 +346,7 @@ export class TayoGame {
     if (this.timeOfDay === 'day') {
       this.timeOfDay = 'sunset';
       this.scene.background = new THREE.Color(0xFD7E53);
-      this.scene.fog = new THREE.FogExp2(0xFD7E53, 0.0045);
+      this.scene.fog = new THREE.FogExp2(0xFD7E53, 0.0032);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0xFFCCBC);
         this.hemiLight.groundColor.setHex(0x4E342E);
@@ -208,12 +356,12 @@ export class TayoGame {
         this.dirLight.color.setHex(0xFFAB40);
         this.dirLight.intensity = 0.9;
       }
-      this.showPopup('🌅 노을 지는 저녁이에요! 헤드라이트 켜짐!');
-      soundManager.speak('예쁜 노을이 지고 있어요! 헤드라이트를 켰어요!');
+      this.showPopup('🌅 노을 지는 저녁이에요! 가로등과 헤드라이트가 켜졌어요!');
+      soundManager.speak('예쁜 노을이 지고 있어요! 가로등과 헤드라이트를 켰어요!');
     } else if (this.timeOfDay === 'sunset') {
       this.timeOfDay = 'night';
       this.scene.background = new THREE.Color(0x0F172A);
-      this.scene.fog = new THREE.FogExp2(0x0F172A, 0.005);
+      this.scene.fog = new THREE.FogExp2(0x0F172A, 0.0038);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0x38BDF8);
         this.hemiLight.groundColor.setHex(0x0F172A);
@@ -223,12 +371,12 @@ export class TayoGame {
         this.dirLight.color.setHex(0x93C5FD);
         this.dirLight.intensity = 0.45;
       }
-      this.showPopup('🌙 반짝반짝 밤이에요! 전조등이 길을 비춰요!');
-      soundManager.speak('밤이 되었어요! 환한 불빛으로 안전하게 달려요!');
+      this.showPopup('🌙 반짝반짝 밤이에요! 가로등 불빛이 도로를 비춰요!');
+      soundManager.speak('밤이 되었어요! 환한 가로등 불빛 아래 안전하게 달려요!');
     } else {
       this.timeOfDay = 'day';
       this.scene.background = new THREE.Color(0x87CEEB);
-      this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0045);
+      this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0032);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0xFFFFFF);
         this.hemiLight.groundColor.setHex(0x689F38);
@@ -257,12 +405,12 @@ export class TayoGame {
     return this.physics.kidAssistEnabled;
   }
 
-  // 언제든 상단 버튼으로 한글/숫자/영어 놀이 열기
+  // 언제든 상단 버튼으로 한글/숫자/영어/안전 놀이 열기
   public openLearningNow(): void {
     if (educationManager.isOpen) return;
     this.resetInput();
     educationManager.openMissionActivity(null, starsEarned => {
-      this.addStar('🎓 신나는 한글·숫자·영어 놀이 완료!', starsEarned);
+      this.addStar('🎓 신나는 한글·숫자·영어·안전 놀이 완료!', starsEarned);
       this.visualBus?.setExpression('happy', 3.0);
     });
   }
@@ -283,7 +431,7 @@ export class TayoGame {
     this.physics.recoverVehicle();
     this.visualBus?.setExpression('surprised', 1.8);
     soundManager.playBoing();
-    soundManager.speak('타요를 바로 세웠어요! 안전하게 다시 출발!');
+    soundManager.speak('차량을 바로 세웠어요! 안전하게 다시 출발!');
     this.showPopup('🔄 차체를 바로 세웠어요!');
   }
 
@@ -307,7 +455,7 @@ export class TayoGame {
   public honk(): void {
     soundManager.playHorn();
     this.visualBus?.setExpression('wink', 1.5);
-    this.showPopup('🎺 빵빵! 비켜주세요~ 타요가 나가요!');
+    this.showPopup('🎺 빵빵! 비켜주세요~ 나가요!');
   }
 
   // 카메라 시점 전환 (5가지 모드: 3인칭 기본, 버스 얼굴 전면뷰, 1인칭 운전석, 대각선 쿼터뷰, 탑다운)
@@ -318,7 +466,7 @@ export class TayoGame {
 
     const labels: Record<CameraMode, string> = {
       chase: '🚗 3인칭 후방 추적 뷰',
-      front_face: '👀 타요 얼굴 뷰 (눈 깜빡임 & 표정 감상)',
+      front_face: '👀 정면 얼굴 뷰 (눈 깜빡임 & 표정 감상)',
       first_person: '💺 1인칭 운전석 뷰',
       isometric: '🧸 장난감 대각선 뷰',
       top_down: '🚁 헬리콥터 탑다운 뷰'
@@ -356,7 +504,7 @@ export class TayoGame {
 
     if (this.stars % 5 === 0) {
       soundManager.playCelebration();
-      soundManager.speak(`우와! 별을 ${this.stars}개나 모았어요! 꼬마버스 최고 안전 대장!`);
+      soundManager.speak(`우와! 별을 ${this.stars}개나 모았어요! 최고 안전 대장!`);
     }
   }
 
@@ -364,11 +512,14 @@ export class TayoGame {
     const banner = document.getElementById('mission-status-bar');
     if (!banner) return;
 
-    if (this.currentPassenger && this.targetStop) {
+    if (this.activeDispatch) {
+      banner.innerHTML = `<span style="color:#FEF08A">${this.activeDispatch.title}</span> (무지개 유도선을 따라가세요!)`;
+      banner.classList.add('active-mission');
+    } else if (this.currentPassenger && this.targetStop) {
       banner.innerHTML = `${this.currentPassenger.icon} <strong>${this.currentPassenger.name}</strong> 탑승 중 ➔ 목적지: <strong>${this.targetStop.icon} ${this.targetStop.name}</strong> (무지개 별을 따라가세요!)`;
       banner.classList.add('active-mission');
     } else {
-      banner.innerHTML = `🚏 노란색 <strong>버스 정류장</strong>에 멈춰서 동물 친구들을 태워주세요! (한글·숫자·영어 놀이 시작!)`;
+      banner.innerHTML = `🚏 노란 <strong>정류장</strong>에서 가족·동물 친구를 태우거나 <strong>🚨 긴급출동</strong> 버튼으로 소방서·경찰서·병원 미션을 시작하세요!`;
       banner.classList.remove('active-mission');
     }
   }
@@ -384,8 +535,20 @@ export class TayoGame {
     busPos: THREE.Vector3,
     busHeading: number
   ): void {
-    const distCenter = Math.sqrt(busPos.x * busPos.x + busPos.z * busPos.z);
-    if (distCenter > 15) {
+    // 4대 주요 사거리 교차로(±54m) 중 가장 가까운 신호등 교차로 찾기
+    const intersections: [number, number][] = [
+      [0, 54],
+      [0, -54],
+      [54, 0],
+      [-54, 0]
+    ];
+    let minDist = Infinity;
+    for (const [ix, iz] of intersections) {
+      const d = Math.hypot(busPos.x - ix, busPos.z - iz);
+      if (d < minDist) minDist = d;
+    }
+
+    if (minDist > 16) {
       this.hasStoppedForRedLight = false;
       return;
     }
@@ -397,13 +560,13 @@ export class TayoGame {
     const speedKmh = this.physics.getSpeedKmh();
 
     if (light === 'red') {
-      if (distCenter >= 5.5 && distCenter <= 12.0 && Math.abs(speedKmh) < 1.5) {
+      if (minDist >= 5.5 && minDist <= 13.5 && Math.abs(speedKmh) < 1.5) {
         if (!this.hasStoppedForRedLight) {
           this.hasStoppedForRedLight = true;
-          this.addStar('🚦 빨간불에 멈춰섰어요! 참 잘했어요!');
+          this.addStar('🚦 빨간불 정지선에 안전하게 멈춰섰어요! 참 잘했어요!');
           soundManager.speak('빨간불에 아주 잘 멈췄어요! 신호등 박사님이네요!');
         }
-      } else if (distCenter < 5.0 && Math.abs(speedKmh) > 6.0 && !this.hasStoppedForRedLight) {
+      } else if (minDist < 5.0 && Math.abs(speedKmh) > 7.5 && !this.hasStoppedForRedLight && !this.isSirenOn) {
         soundManager.speak('어? 빨간불에는 멈춰야 해요! 다음엔 꼭 멈춰봐요!');
         this.hasStoppedForRedLight = true;
       }
@@ -415,17 +578,33 @@ export class TayoGame {
   }
 
   /**
-   * 정류장 승객 탑승 & 4세 한글·숫자·영어 미션 연동 & 목적지 도착 판정
+   * 정류장 승객 탑승 & 4세 한글·숫자·영어·안전 미션 연동 & 목적지 도착 판정
    */
   private checkBusStops(busPos: THREE.Vector3): void {
     if (educationManager.isOpen) return;
     const speedKmh = this.physics.getSpeedKmh();
 
-    // 4세 아이가 쉽게 정차할 수 있도록 정차 반경(5.6m) 및 허용 속도(3.2km/h)를 넉넉하게 설정
+    // 긴급출동 목표 지점 도착 체크
+    if (this.activeDispatch) {
+      const distDispatch = Math.hypot(
+        busPos.x - this.activeDispatch.targetX,
+        busPos.z - this.activeDispatch.targetZ
+      );
+      if (distDispatch < 11.0 && Math.abs(speedKmh) < 6.0) {
+        if (this.activeDispatch.stationType === 'fire_station') {
+          const forward = new THREE.Vector3(0, 0, 1);
+          this.world.sprayWaterAtFire(busPos, forward);
+          soundManager.playWaterSplash();
+        }
+        this.completeEmergencyDispatch();
+      }
+    }
+
+    // 4세 아이가 쉽게 정차할 수 있도록 정차 반경(5.8m) 및 허용 속도(3.4km/h)를 넉넉하게 설정
     for (const stop of this.world.busStops) {
       const dist = Math.hypot(busPos.x - stop.x, busPos.z - stop.z);
 
-      if (dist < 5.6 && Math.abs(speedKmh) < 3.2) {
+      if (dist < 5.8 && Math.abs(speedKmh) < 3.4) {
         if (stop.hasPassenger && !this.currentPassenger) {
           stop.hasPassenger = false;
           this.currentPassenger = {
@@ -454,7 +633,7 @@ export class TayoGame {
           this.updateMissionBanner();
           this.resetInput();
 
-          // 승객 탑승 시 4세 맞춤형 한글/숫자/영어 놀이 미션 팝업 오픈!
+          // 승객 탑승 시 4세 맞춤형 한글/숫자/영어/안전 놀이 미션 팝업 오픈!
           setTimeout(() => {
             educationManager.openMissionActivity(
               {
@@ -502,8 +681,10 @@ export class TayoGame {
       }
     }
 
-    // 4세 운전보조 타겟 갱신 (승객 탑승 중이면 목적지 정류장, 아니면 가장 가까운 정류장)
-    if (this.targetStop) {
+    // 4세 운전보조 타겟 갱신 (긴급출동 중이면 출동지, 승객 탑승 중이면 목적지 정류장, 아니면 가장 가까운 정류장)
+    if (this.activeDispatch) {
+      this.physics.kidAssistTarget = new THREE.Vector3(this.activeDispatch.targetX, 0, this.activeDispatch.targetZ);
+    } else if (this.targetStop) {
       this.physics.kidAssistTarget = new THREE.Vector3(this.targetStop.x, 0, this.targetStop.z);
     } else {
       let nearest: BusStopData | null = null;
@@ -524,7 +705,9 @@ export class TayoGame {
    * 버스 앞에서 목적지 방향으로 이어지는 무지개 유도 도트 업데이트
    */
   private updateGuideDots(busPos: THREE.Vector3): void {
-    const target = this.targetStop
+    const target = this.activeDispatch
+      ? new THREE.Vector3(this.activeDispatch.targetX, 0, this.activeDispatch.targetZ)
+      : this.targetStop
       ? new THREE.Vector3(this.targetStop.x, 0, this.targetStop.z)
       : this.physics.kidAssistTarget;
 
@@ -553,7 +736,7 @@ export class TayoGame {
   }
 
   /**
-   * 우측 상단 실시간 미니맵 렌더링 (도로망, 정류장, 목적지, 세차장, 충전소, 내 버스 위치 표시)
+   * 🗺️ 우측 상단 실시간 미니맵 렌더링 (실제 3D 월드 도로망 100% 동기화: 중앙 로터리 + 직선 도로 + 외곽 곡선 커브 + 랜드마크 + F1/긴급 차량!)
    */
   private drawMinimap(busPos: THREE.Vector3, busHeading: number): void {
     const ctx = this.minimapCtx;
@@ -561,9 +744,9 @@ export class TayoGame {
 
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const scale = w / 250; // 월드 -125 ~ +125 영역 매핑
+    const scale = w / 330; // 확장된 월드 -165m ~ +165m 영역을 한눈에 매핑
     const toMapX = (wx: number) => w / 2 + wx * scale;
-    const toMapY = (wz: number) => h / 2 - wz * scale; // +Z가 위쪽(북쪽)으로 보이도록
+    const toMapY = (wz: number) => h / 2 - wz * scale; // +Z가 북쪽(위), -Z가 남쪽(아래)
 
     ctx.clearRect(0, 0, w, h);
 
@@ -571,40 +754,105 @@ export class TayoGame {
     ctx.fillStyle = this.timeOfDay === 'night' ? '#0F172A' : '#86EFAC';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. 도로망 그리기
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 6;
-    const roads = [-108, -48, 0, 48, 108];
-    roads.forEach(r => {
-      // 가로 도로
-      ctx.beginPath();
-      ctx.moveTo(toMapX(-112), toMapY(r));
-      ctx.lineTo(toMapX(112), toMapY(r));
-      ctx.stroke();
+    // 2. 실제 3D 도로망 (`this.world.minimapRoads`) 100% 동기화 렌더링!
+    ctx.lineCap = 'butt';
+    this.world.minimapRoads.forEach(seg => {
+      if (seg.kind === 'roundabout' && seg.cx !== undefined && seg.cz !== undefined && seg.innerRadius && seg.outerRadius) {
+        const cx = toMapX(seg.cx);
+        const cy = toMapY(seg.cz);
+        const rMid = ((seg.innerRadius + seg.outerRadius) / 2) * scale;
+        const rWidth = (seg.outerRadius - seg.innerRadius) * scale;
 
-      // 세로 도로
-      ctx.beginPath();
-      ctx.moveTo(toMapX(r), toMapY(-112));
-      ctx.lineTo(toMapX(r), toMapY(112));
-      ctx.stroke();
+        // 로터리 아스팔트 링
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = rWidth;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rMid, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 로터리 중앙 분수대 공원
+        ctx.fillStyle = '#4ADE80';
+        ctx.beginPath();
+        ctx.arc(cx, cy, seg.innerRadius * scale, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#38BDF8';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3.8 * scale, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (seg.kind === 'straight' && seg.x1 !== undefined && seg.z1 !== undefined && seg.x2 !== undefined && seg.z2 !== undefined) {
+        const x1 = toMapX(seg.x1);
+        const y1 = toMapY(seg.z1);
+        const x2 = toMapX(seg.x2);
+        const y2 = toMapY(seg.z2);
+
+        // 아스팔트 본체
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = Math.max(4, seg.width * scale);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // 노란색 중앙 차선
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      } else if (seg.kind === 'arc' && seg.cx !== undefined && seg.cz !== undefined && seg.radius !== undefined && seg.startAngle !== undefined && seg.endAngle !== undefined) {
+        const cx = toMapX(seg.cx);
+        const cy = toMapY(seg.cz);
+        const r = seg.radius * scale;
+
+        // 3D RingGeometry의 (cx + r*cos(t), cz - r*sin(t))는 미니맵 (toMapX, toMapY)에서 정확히 표준 각도 [startAngle, endAngle]에 대응!
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = Math.max(4, seg.width * scale);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, seg.startAngle, seg.endAngle);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, seg.startAngle, seg.endAngle);
+        ctx.stroke();
+      }
     });
 
-    // 3. 인터랙티브 시설 아이콘 (차고지, 세차장, 충전소)
+    // 3. 주요 인터랙티브 시설 (경찰서🚓, 소방서🚒, 병원🏥, 차고지🚌, 세차장🫧, 충전소⚡) 표시
     this.world.interactiveZones.forEach(z => {
-      ctx.fillStyle = z.type === 'carwash' ? '#0284C7' : z.type === 'station' ? '#059669' : '#2563EB';
+      const zx = toMapX(z.x);
+      const zy = toMapY(z.z);
+      ctx.fillStyle = z.color || '#2563EB';
       ctx.beginPath();
-      ctx.arc(toMapX(z.x), toMapY(z.z), 5, 0, Math.PI * 2);
+      ctx.arc(zx, zy, 5.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
     });
 
-    // 4. 버스 정류장 & 현재 미션 목적지 표시
+    // 4. 긴급출동 타겟 펄스 링 표시
+    if (this.activeDispatch) {
+      const dx = toMapX(this.activeDispatch.targetX);
+      const dy = toMapY(this.activeDispatch.targetZ);
+      const pulse = 7 + Math.sin(this.totalTime * 10) * 3.5;
+      ctx.strokeStyle = '#EF4444';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(dx, dy, pulse, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 5. 버스 정류장 & 현재 승객 목적지 표시
     this.world.busStops.forEach(s => {
       const mx = toMapX(s.x);
       const my = toMapY(s.z);
       const isTarget = this.targetStop && this.targetStop.id === s.id;
 
       if (isTarget) {
-        const pulse = 6 + Math.sin(this.totalTime * 8) * 3;
+        const pulse = 5 + Math.sin(this.totalTime * 8) * 3;
         ctx.fillStyle = 'rgba(250, 204, 21, 0.45)';
         ctx.beginPath();
         ctx.arc(mx, my, pulse + 4, 0, Math.PI * 2);
@@ -612,25 +860,39 @@ export class TayoGame {
 
         ctx.fillStyle = '#EAB308';
         ctx.beginPath();
-        ctx.arc(mx, my, 5.5, 0, Math.PI * 2);
+        ctx.arc(mx, my, 4.8, 0, Math.PI * 2);
         ctx.fill();
       } else {
         ctx.fillStyle = s.hasPassenger ? '#16A34A' : '#94A3B8';
         ctx.beginPath();
-        ctx.arc(mx, my, 3.5, 0, Math.PI * 2);
+        ctx.arc(mx, my, 3.0, 0, Math.PI * 2);
         ctx.fill();
       }
     });
 
-    // 5. NPC 차량 점 표시
+    // 6. NPC 차량 (페라리 F1, 메르세데스 F1, 경찰차, 소방차, 구급차, 시티카) 실시간 마커
     this.world.npcVehicles.forEach(npc => {
-      ctx.fillStyle = '#F43F5E';
+      const nx = toMapX(npc.mesh.position.x);
+      const ny = toMapY(npc.mesh.position.z);
+      if (npc.kind === 'ferrari_f1') {
+        ctx.fillStyle = '#DC0000';
+      } else if (npc.kind === 'mercedes_f1') {
+        ctx.fillStyle = '#00D2BE';
+      } else if (npc.kind === 'pat') {
+        ctx.fillStyle = '#3B82F6';
+      } else if (npc.kind === 'frank') {
+        ctx.fillStyle = '#EF4444';
+      } else if (npc.kind === 'alice') {
+        ctx.fillStyle = '#10B981';
+      } else {
+        ctx.fillStyle = '#F59E0B';
+      }
       ctx.beginPath();
-      ctx.arc(toMapX(npc.mesh.position.x), toMapY(npc.mesh.position.z), 3, 0, Math.PI * 2);
+      ctx.arc(nx, ny, npc.isF1 ? 4.0 : 3.0, 0, Math.PI * 2);
       ctx.fill();
     });
 
-    // 6. 플레이어 타요 버스 위치 및 방향 화살표
+    // 7. 플레이어 차량 위치 및 방향 화살표
     const px = toMapX(busPos.x);
     const py = toMapY(busPos.z);
 
@@ -667,7 +929,6 @@ export class TayoGame {
     const busHeading = euler.y;
 
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(busQuat);
-    const up = new THREE.Vector3(0, 1, 0);
 
     if (this.cameraMode === 'chase') {
       // 1. 후방 3인칭 추적 뷰
@@ -682,7 +943,7 @@ export class TayoGame {
       this.camera.lookAt(lookTarget);
 
     } else if (this.cameraMode === 'front_face') {
-      // 2. 🌟 아들을 위한 전면 타요 얼굴 뷰! (버스 바로 앞에서 타요 얼굴, 눈 깜빡임, 입 미소를 마주보는 뷰)
+      // 2. 🌟 아들을 위한 전면 얼굴 뷰! (차량 바로 앞에서 눈 깜빡임, 입 미소, 경광등을 마주보는 뷰)
       const frontOffset = forward.clone().multiplyScalar(7.2).add(new THREE.Vector3(0, 2.3, 0));
       const targetPos = busPos.clone().add(frontOffset);
       this.camera.position.lerp(targetPos, 9.0 * delta);
@@ -721,6 +982,24 @@ export class TayoGame {
     const frameDelta = Math.min((now - this.lastFrameTime) / 1000, 0.1);
     this.lastFrameTime = now;
     this.totalTime += frameDelta;
+
+    if (this.f1SoundCooldown > 0) this.f1SoundCooldown -= frameDelta;
+    if (this.pedestrianBonusCooldown > 0) this.pedestrianBonusCooldown -= frameDelta;
+
+    // 사이렌 켜져 있을 때 주기적 사이렌 사운드 재생
+    if (this.isSirenOn) {
+      this.sirenLoopTimer -= frameDelta;
+      if (this.sirenLoopTimer <= 0) {
+        this.sirenLoopTimer = 3.2;
+        const kind =
+          this.currentBusType === 'frank'
+            ? 'fire'
+            : this.currentBusType === 'alice'
+            ? 'ambulance'
+            : 'police';
+        soundManager.playSiren(kind);
+      }
+    }
 
     // 학습 모달이 열려 있을 때는 차량 정지 유지
     const activeInput: InputState = educationManager.isOpen
@@ -774,12 +1053,32 @@ export class TayoGame {
       const traffic = this.world.updateTrafficLights(this.totalTime);
       this.checkTrafficRules(traffic, busPos, euler.y);
 
-      // 6. 월드 동적 요소 (승객, 세차장, 충전소, 차고지, 도로 별, NPC 차량) 업데이트
-      const worldEvents = this.world.updateWorldElements(frameDelta, busPos);
+      // 6. 월드 동적 요소 (분수대, 불꽃, 보행자, F1 레이싱카, 경찰서/소방서/병원) 업데이트
+      const worldEvents = this.world.updateWorldElements(
+        frameDelta,
+        busPos,
+        traffic.nsState,
+        traffic.ewState,
+        Math.abs(speedKmh)
+      );
+
       if (worldEvents.collectedStar) {
         this.addStar('🌟 도로 위 반짝이는 별을 찾았어요!', 1);
         this.visualBus.setExpression('wink', 1.5);
       }
+
+      if (worldEvents.f1PassedBy && this.f1SoundCooldown <= 0) {
+        this.f1SoundCooldown = 9.0;
+        soundManager.playF1Passby();
+        this.showPopup(`🏎️ 부아앙~! ${worldEvents.f1PassedBy} 레이싱카가 초고속으로 지나가요!`);
+      }
+
+      if (worldEvents.pedestrianYielded && this.pedestrianBonusCooldown <= 0) {
+        this.pedestrianBonusCooldown = 18.0;
+        this.addStar('🚸 횡단보도를 건너는 보행자를 안전하게 기다려줬어요!', 2);
+        soundManager.speak('보행자가 건널 때까지 기다려주었네요! 정말 착해요!');
+      }
+
       if (worldEvents.triggeredZone) {
         const z = worldEvents.triggeredZone;
         if (z.type === 'carwash') {
@@ -795,6 +1094,38 @@ export class TayoGame {
         } else if (z.type === 'garage') {
           soundManager.playDoor();
           this.showPopup('🏠 꼬마버스 차고지 문이 열렸어요! 반가워요!');
+        } else if (z.type === 'police_station') {
+          soundManager.playSiren('police');
+          soundManager.speak('충성! 일일이 용감한 경찰서에 도착했어요! 우리 동네 안전 이상 무!');
+          this.addStar('🚓 112 경찰서 안전 순찰 본부 방문 완료!', 2);
+          this.visualBus.setExpression('wink', 3.0);
+          if (this.activeDispatch && this.activeDispatch.stationType === 'police_station') {
+            this.completeEmergencyDispatch();
+          }
+        } else if (z.type === 'fire_station') {
+          const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(busQuat);
+          const res = this.world.sprayWaterAtFire(busPos, forward);
+          soundManager.playWaterSplash();
+          if (res.extinguishedFire) {
+            soundManager.playCelebration();
+            soundManager.speak('쏴아아! 일일구 소방서 훈련 타워의 불을 시원하게 껐어요!');
+            this.addStar('🚒💦 119 소방서 화재 진압 훈련 대성공!', 3);
+          } else {
+            soundManager.speak('일일구 용감한 소방서에 도착했어요! 언제든 출동 준비 완료!');
+            this.addStar('🚒 119 소방서 안전 점검 완료!', 2);
+          }
+          this.visualBus.setExpression('happy', 3.5);
+          if (this.activeDispatch && this.activeDispatch.stationType === 'fire_station') {
+            this.completeEmergencyDispatch();
+          }
+        } else if (z.type === 'hospital') {
+          soundManager.playHealChime();
+          soundManager.speak('띠링띠링! 튼튼 어린이 종합병원에서 건강 에너지를 백 퍼센트 회복했어요!');
+          this.addStar('🏥 튼튼 종합병원 응급실 방문 & 건강 충전 완료!', 2);
+          this.visualBus.setExpression('happy', 3.5);
+          if (this.activeDispatch && this.activeDispatch.stationType === 'hospital') {
+            this.completeEmergencyDispatch();
+          }
         }
       }
 
@@ -818,7 +1149,7 @@ export class TayoGame {
       }
 
       // 9. 목적지 화살표 애니메이션
-      if (this.targetStop && this.guideArrow) {
+      if ((this.targetStop || this.activeDispatch) && this.guideArrow) {
         this.guideArrow.position.y = 4.8 + Math.sin(this.totalTime * 4) * 0.45;
         this.guideArrow.rotation.y += 2.5 * frameDelta;
       }

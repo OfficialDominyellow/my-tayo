@@ -13,18 +13,23 @@
     <!-- 상단 HUD -->
     <div id="top-hud">
         <div class="hud-left-group">
-            <div class="hud-pill" id="btn-char-select" title="다른 꼬마버스로 바꾸기">
+            <div class="hud-pill" id="btn-char-select" title="버스는 물론 경찰차·소방차·구급차로도 변신해요!">
                 <span>🚌</span>
                 <span id="current-bus-name">타요</span>
-                <span style="font-size: 0.82rem; color: #0288D1;">(바꾸기)</span>
+                <span style="font-size: 0.82rem; color: #0288D1;">(차량 바꾸기)</span>
             </div>
 
-            <div class="hud-pill hud-pill-edu" id="btn-edu-open" title="4세 한글·숫자·영어 놀이교실 열기 (단축키: E)">
+            <div class="hud-pill hud-pill-dispatch" id="btn-dispatch" title="소방서 화재진압·경찰서 순찰·병원 응급이송 긴급출동 미션! (단축키: Q)">
+                <span>🚨</span>
+                <span>긴급출동!</span>
+            </div>
+
+            <div class="hud-pill hud-pill-edu" id="btn-edu-open" title="4세 한글·숫자·영어·안전상식 놀이교실 열기 (단축키: E)">
                 <span>🎓</span>
                 <span>놀이교실</span>
             </div>
 
-            <div class="hud-pill" id="btn-time" title="낮 / 노을 / 밤 시간 바꾸기 (단축키: T)">
+            <div class="hud-pill" id="btn-time" title="낮 / 노을 / 밤 (가로등 점등) 시간 바꾸기 (단축키: T)">
                 <span>☀️</span>
                 <span>낮</span>
             </div>
@@ -60,13 +65,15 @@
         🚏 승객을 찾고 있어요...
     </div>
 
-    <!-- 우측 상단 미니맵 레이더 -->
+    <!-- 우측 상단 미니맵 레이더 (실제 도로망·로터리·커브길·F1·긴급차량 100% 실시간 동기화) -->
     <div id="minimap-container">
         <canvas id="minimap-canvas" width="180" height="180"></canvas>
         <div class="minimap-legend">
             <span>🔵 나</span>
             <span>🟢 승객</span>
             <span>🔴 목적지</span>
+            <span>🏎️ F1</span>
+            <span>🚒🚔🚑</span>
         </div>
     </div>
 
@@ -113,7 +120,7 @@
 
     <!-- PC 조작 안내 (키보드 힌트) -->
     <div id="key-guide">
-        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | E: 놀이교실 | T: 낮/밤 | M: 음악 | R: 복구 | C: 카메라 시점 (5가지)
+        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | F: 사이렌·물대포 | Q: 긴급출동 | E: 놀이교실 | T: 낮/밤 | C: 시점(5종)
     </div>
 
     <!-- 하단 온스크린 터치/마우스 컨트롤 버튼 (어린이용 대형 버튼) -->
@@ -124,10 +131,11 @@
             <button class="btn-control btn-steering" id="btn-right" aria-label="우회전">▶</button>
         </div>
 
-        <!-- 중앙: 경적 & 카메라 버튼 -->
+        <!-- 중앙: 경적, 사이렌/물대포 & 카메라 버튼 -->
         <div class="center-controls">
-            <button class="btn-control" id="btn-horn" aria-label="경적 울리기" title="빵빵!">🎺</button>
-            <button class="btn-control" id="btn-camera" aria-label="시점 변경" title="시점 변경">📷</button>
+            <button class="btn-control" id="btn-horn" aria-label="경적 울리기" title="빵빵! (Space)">🎺</button>
+            <button class="btn-control" id="btn-siren" aria-label="사이렌 및 소방 물대포" title="삐뽀삐뽀 사이렌 & 소방 물대포 발사! (단축키: F)">🚨</button>
+            <button class="btn-control" id="btn-camera" aria-label="시점 변경" title="카메라 시점 변경 (단축키: C)">📷</button>
         </div>
 
         <!-- 오른쪽: 가속, 후진, 브레이크 페달 -->
@@ -138,16 +146,16 @@
         </div>
     </div>
 
-    <!-- 캐릭터 선택 모달 팝업 -->
+    <!-- 캐릭터 & 긴급구조대 차량 선택 모달 팝업 -->
     <div id="char-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <h2 class="modal-title">🚌 누구를 타고 달려볼까요?</h2>
+            <h2 class="modal-title">🚌🚔🚒 누구를 타고 출동해볼까요?</h2>
             <div class="char-grid">
                 <!-- 1. 타요 -->
                 <div class="char-card selected" data-char="tayo">
                     <div class="char-avatar avatar-tayo">120</div>
                     <div class="char-name">타요</div>
-                    <div class="char-desc">호기심 강하고 명랑한 새내기 버스</div>
+                    <div class="char-desc">호기심 강하고 명랑한 파란 버스</div>
                 </div>
 
                 <!-- 2. 로기 -->
@@ -161,21 +169,42 @@
                 <div class="char-card" data-char="lani">
                     <div class="char-avatar avatar-lani">02</div>
                     <div class="char-name">라니</div>
-                    <div class="char-desc">상냥하고 귀여운 애교 만점 버스</div>
+                    <div class="char-desc">상냥하고 귀여운 노란 버스</div>
                 </div>
 
                 <!-- 4. 가니 -->
                 <div class="char-card" data-char="gani">
                     <div class="char-avatar avatar-gani">1339</div>
                     <div class="char-name">가니</div>
-                    <div class="char-desc">생각이 깊고 남을 배려하는 버스</div>
+                    <div class="char-desc">듬직하고 배려심 깊은 빨간 버스</div>
+                </div>
+
+                <!-- 5. 패트 (경찰차) -->
+                <div class="char-card" data-char="pat">
+                    <div class="char-avatar avatar-pat">🚔</div>
+                    <div class="char-name">패트 (경찰차)</div>
+                    <div class="char-desc">삐뽀삐뽀! 우리 동네 안전을 지키는 경찰차</div>
+                </div>
+
+                <!-- 6. 프랭크 (소방차) -->
+                <div class="char-card" data-char="frank">
+                    <div class="char-avatar avatar-frank">🚒</div>
+                    <div class="char-name">프랭크 (소방차)</div>
+                    <div class="char-desc">강력한 물대포로 불을 끄는 용감한 소방차</div>
+                </div>
+
+                <!-- 7. 앨리스 (구급차) -->
+                <div class="char-card" data-char="alice">
+                    <div class="char-avatar avatar-alice">🚑</div>
+                    <div class="char-name">앨리스 (구급차)</div>
+                    <div class="char-desc">아픈 친구들을 병원으로 데려다주는 구급차</div>
                 </div>
             </div>
-            <button class="btn-close" id="btn-close-modal">출발하기!</button>
+            <button class="btn-close" id="btn-close-modal">신나게 출발하기!</button>
         </div>
     </div>
 
-    <!-- 4세 맞춤 한글 / 숫자 / 영어 학습 모달 팝업 -->
+    <!-- 4세 맞춤 한글 / 숫자 / 영어 / 안전상식 학습 모달 팝업 -->
     <div id="edu-modal" class="modal-overlay hidden">
         <div class="modal-content edu-modal-card">
             <div class="edu-header">
@@ -185,6 +214,7 @@
                     <button class="edu-tab-btn" data-cat="hangul">🇰🇷 한글놀이</button>
                     <button class="edu-tab-btn" data-cat="number">🔢 숫자놀이</button>
                     <button class="edu-tab-btn" data-cat="english">🔤 영어놀이</button>
+                    <button class="edu-tab-btn" data-cat="safety">🚦 안전·상식</button>
                 </div>
             </div>
 

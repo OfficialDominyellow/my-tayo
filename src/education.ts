@@ -1,10 +1,10 @@
 import { soundManager } from './sound';
 
-export type EduCategory = 'all' | 'hangul' | 'number' | 'english';
+export type EduCategory = 'all' | 'hangul' | 'number' | 'english' | 'safety';
 export type EduGameMode = 'quiz' | 'trace' | 'match';
 
 interface QuizQuestion {
-  category: 'hangul' | 'number' | 'english';
+  category: 'hangul' | 'number' | 'english' | 'safety';
   mode: 'quiz';
   title: string;
   voicePrompt: string;
@@ -20,7 +20,7 @@ interface QuizQuestion {
 }
 
 interface TraceActivity {
-  category: 'hangul' | 'number' | 'english';
+  category: 'hangul' | 'number' | 'english' | 'safety';
   mode: 'trace';
   char: string;
   name: string;
@@ -32,7 +32,7 @@ interface TraceActivity {
 }
 
 interface MatchActivity {
-  category: 'hangul' | 'number' | 'english';
+  category: 'hangul' | 'number' | 'english' | 'safety';
   mode: 'match';
   title: string;
   voicePrompt: string;
@@ -277,6 +277,51 @@ const EDU_ACTIVITIES: EduActivity[] = [
     pairs: [
       { id: 'dog', leftEmoji: '🐶', leftLabel: '멍멍 강아지', rightText: 'DOG', rightSub: '도그 (D-O-G)', voiceText: '도그! 강아지!' },
       { id: 'cat', leftEmoji: '🐱', leftLabel: '야옹 고양이', rightText: 'CAT', rightSub: '캣 (C-A-T)', voiceText: '캣! 고양이!' }
+    ]
+  },
+
+  // ==================== 🚦 안전·생활 상식 (119 소방차, 112 경찰차, 구급차, 횡단보도) ====================
+  {
+    category: 'safety',
+    mode: 'quiz',
+    title: '🚒 [안전 상식] 불이 났을 때 물대포로 불을 꺼주는 고마운 차는 누구일까요?',
+    voicePrompt: '삐뽀삐뽀! 불이 났을 때 출동해서 물대포로 불을 꺼주는 고마운 자동차는 누구일까요?',
+    options: [
+      { emoji: '🚒', label: '119 소방차', subLabel: '프랭크 소방차', voiceText: '일일구 소방차! 맞았어요! 프랭크 소방차가 불을 꺼줘요!', isCorrect: true },
+      { emoji: '🍦', label: '아이스크림차', subLabel: '달콤한 간식', voiceText: '아이스크림차! 맛있는 간식 차네요. 소방차를 찾아볼까요?', isCorrect: false },
+      { emoji: '🚜', label: '트랙터', subLabel: '농장 일꾼', voiceText: '트랙터! 밭을 가는 트랙터예요. 빨간 소방차를 찾아볼까요?', isCorrect: false }
+    ]
+  },
+  {
+    category: 'safety',
+    mode: 'quiz',
+    title: '🚓 [안전 상식] 길을 잃었거나 도움이 필요할 때 도와주는 112 자동차는?',
+    voicePrompt: '위잉위잉! 길을 잃거나 위험할 때 우리를 지켜주는 일일이 경찰차는 어디 있을까요?',
+    options: [
+      { emoji: '🚓', label: '112 경찰차', subLabel: '패트 경찰차', voiceText: '일일이 경찰차! 딩동댕! 멋진 패트 경찰차예요!', isCorrect: true },
+      { emoji: '🚲', label: '자전거', subLabel: '따릉따릉', voiceText: '자전거! 신나는 자전거네요. 경찰차를 찾아볼까요?', isCorrect: false },
+      { emoji: '⛵', label: '돛단배', subLabel: '바다 위 배', voiceText: '돛단배! 바다에 떠 있는 배예요!', isCorrect: false }
+    ]
+  },
+  {
+    category: 'safety',
+    mode: 'quiz',
+    title: '🚑 [안전 상식] 다치거나 아픈 사람을 병원으로 빠르게 데려다주는 차는?',
+    voicePrompt: '배가 아프거나 다쳤을 때 병원으로 데려다주는 구급차는 어디 있을까요?',
+    options: [
+      { emoji: '🚑', label: '119 구급차', subLabel: '앨리스 구급차', voiceText: '구급차! 맞았어요! 앨리스 구급차가 병원으로 데려다줘요!', isCorrect: true },
+      { emoji: '🏎️', label: 'F1 레이싱카', subLabel: '쌩쌩 경주용 차', voiceText: '에프원 레이싱카! 정말 빠르지만 구급차를 찾아볼까요?', isCorrect: false },
+      { emoji: '🚂', label: '칙칙폭폭 기차', subLabel: '철길 기차', voiceText: '기차! 칙칙폭폭 기차네요!', isCorrect: false }
+    ]
+  },
+  {
+    category: 'safety',
+    mode: 'match',
+    title: '🔗 [안전 선긋기] 출동 자동차와 일하는 건물을 짝지어 주세요!',
+    voicePrompt: '경찰차는 경찰서로! 소방차는 소방서로! 알맞은 건물을 찾아 이어주세요!',
+    pairs: [
+      { id: 'police', leftEmoji: '🚓', leftLabel: '패트 경찰차', rightText: '112 경찰서', rightSub: '우리 동네 지킴이', voiceText: '경찰차는 일일이 경찰서로 출동!' },
+      { id: 'fire', leftEmoji: '🚒', leftLabel: '프랭크 소방차', rightText: '119 소방서', rightSub: '불끄기 대장', voiceText: '소방차는 일일구 소방서로 출동!' }
     ]
   }
 ];
