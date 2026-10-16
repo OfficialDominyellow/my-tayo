@@ -78,7 +78,7 @@
         🚦 오늘도 안전하게 순찰해볼까요?
     </div>
 
-    <!-- 어린이용 속도계 -->
+    <!-- 어린이용 속도계 & 파워핸들 계기판 -->
     <div id="speedometer-box">
         <div class="speed-header">
             <span>💨 속도</span>
@@ -89,9 +89,31 @@
         </div>
     </div>
 
+    <!-- 🌟 실시간 파워핸들 UI 위젯 (핸들이 어느 방향을 향하고 있는지 시각화) -->
+    <div id="steering-wheel-container">
+        <div id="steering-wheel-visual">
+            <svg viewBox="0 0 100 100" class="steering-svg">
+                <!-- 외곽 림 -->
+                <circle cx="50" cy="50" r="44" fill="none" stroke="#0284C7" stroke-width="9" />
+                <circle cx="50" cy="50" r="47" fill="none" stroke="#38BDF8" stroke-width="2" />
+                <circle cx="50" cy="50" r="38" fill="none" stroke="#0369A1" stroke-width="2" />
+                <!-- 12시 방향 상단 센터 마커 (정렬 가이드) -->
+                <rect x="47" y="3" width="6" height="10" fill="#FACC15" rx="3" />
+                <!-- 3개 스포크 -->
+                <line x1="50" y1="50" x2="50" y2="88" stroke="#0284C7" stroke-width="8" stroke-linecap="round" />
+                <line x1="50" y1="50" x2="16" y2="40" stroke="#0284C7" stroke-width="8" stroke-linecap="round" />
+                <line x1="50" y1="50" x2="84" y2="40" stroke="#0284C7" stroke-width="8" stroke-linecap="round" />
+                <!-- 중앙 타요 혼 버튼 -->
+                <circle cx="50" cy="50" r="18" fill="#FACC15" stroke="#FFFFFF" stroke-width="3" />
+                <text x="50" y="55" font-size="14" font-weight="900" fill="#1E3A8A" text-anchor="middle">🚌</text>
+            </svg>
+        </div>
+        <div id="steering-angle-text">0°</div>
+    </div>
+
     <!-- PC 조작 안내 (키보드 힌트) -->
     <div id="key-guide">
-        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | E: 놀이교실 | T: 낮/밤 | M: 음악 | R: 복구 | C: 시점
+        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | E: 놀이교실 | T: 낮/밤 | M: 음악 | R: 복구 | C: 카메라 시점 (5가지)
     </div>
 
     <!-- 하단 온스크린 터치/마우스 컨트롤 버튼 (어린이용 대형 버튼) -->

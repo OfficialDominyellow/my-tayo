@@ -4,7 +4,7 @@ import { WorldManager } from './world';
 import { BusModelFactory, BusVisualInstance } from './bus-model';
 import { soundManager } from './sound';
 import { educationManager } from './education';
-import { BusStopData, BusType, DebugMetrics, InputState, TimeOfDay } from './types';
+import { BusStopData, BusType, CameraMode, DebugMetrics, InputState, TimeOfDay } from './types';
 
 export class TayoGame {
   private container: HTMLElement;
@@ -31,7 +31,7 @@ export class TayoGame {
   private guideDots: THREE.Mesh[] = [];
 
   // 카메라 및 환경 모드
-  public cameraMode: 'follow' | 'top' = 'follow';
+  public cameraMode: CameraMode = 'chase';
   public timeOfDay: TimeOfDay = 'day';
 
   // 디버그 및 성능 지표 (라즈베리파이 5 최적화)
@@ -310,11 +310,22 @@ export class TayoGame {
     this.showPopup('🎺 빵빵! 비켜주세요~ 타요가 나가요!');
   }
 
-  // 카메라 시점 전환
-  public toggleCamera(): void {
-    this.cameraMode = this.cameraMode === 'follow' ? 'top' : 'follow';
-    const label = this.cameraMode === 'follow' ? '운전 시점' : '헬리콥터 시점';
-    this.showPopup(`📷 ${label}`);
+  // 카메라 시점 전환 (5가지 모드: 3인칭 기본, 버스 얼굴 전면뷰, 1인칭 운전석, 대각선 쿼터뷰, 탑다운)
+  public toggleCamera(): CameraMode {
+    const modes: CameraMode[] = ['chase', 'front_face', 'first_person', 'isometric', 'top_down'];
+    const nextIdx = (modes.indexOf(this.cameraMode) + 1) % modes.length;
+    this.cameraMode = modes[nextIdx];
+
+    const labels: Record<CameraMode, string> = {
+      chase: '🚗 3인칭 후방 추적 뷰',
+      front_face: '👀 타요 얼굴 뷰 (눈 깜빡임 & 표정 감상)',
+      first_person: '💺 1인칭 운전석 뷰',
+      isometric: '🧸 장난감 대각선 뷰',
+      top_down: '🚁 헬리콥터 탑다운 뷰'
+    };
+
+    this.showPopup(`📷 카메라: ${labels[this.cameraMode]}`);
+    return this.cameraMode;
   }
 
   public showPopup(text: string): void {
@@ -650,12 +661,16 @@ export class TayoGame {
     }
   }
 
-  // 부드러운 카메라 추적
+  // 부드러운 다각도 카메라 추적 (5가지 시점)
   private updateCamera(delta: number, busPos: THREE.Vector3, busQuat: THREE.Quaternion): void {
     const euler = new THREE.Euler().setFromQuaternion(busQuat, 'YXZ');
     const busHeading = euler.y;
 
-    if (this.cameraMode === 'follow') {
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(busQuat);
+    const up = new THREE.Vector3(0, 1, 0);
+
+    if (this.cameraMode === 'chase') {
+      // 1. 후방 3인칭 추적 뷰
       const idealOffset = new THREE.Vector3(
         -Math.sin(busHeading) * 10.6,
         5.5,
@@ -663,11 +678,35 @@ export class TayoGame {
       );
       const targetPos = busPos.clone().add(idealOffset);
       this.camera.position.lerp(targetPos, 8.0 * delta);
-
       const lookTarget = busPos.clone().add(new THREE.Vector3(0, 1.5, 0));
       this.camera.lookAt(lookTarget);
-    } else {
-      const topOffset = new THREE.Vector3(0, 42, -24);
+
+    } else if (this.cameraMode === 'front_face') {
+      // 2. 🌟 아들을 위한 전면 타요 얼굴 뷰! (버스 바로 앞에서 타요 얼굴, 눈 깜빡임, 입 미소를 마주보는 뷰)
+      const frontOffset = forward.clone().multiplyScalar(7.2).add(new THREE.Vector3(0, 2.3, 0));
+      const targetPos = busPos.clone().add(frontOffset);
+      this.camera.position.lerp(targetPos, 9.0 * delta);
+      const lookTarget = busPos.clone().add(new THREE.Vector3(0, 1.6, 0));
+      this.camera.lookAt(lookTarget);
+
+    } else if (this.cameraMode === 'first_person') {
+      // 3. 1인칭 운전석 뷰 (차량 내부 앞유리 위치)
+      const fpOffset = forward.clone().multiplyScalar(1.2).add(new THREE.Vector3(-0.4, 2.05, 0));
+      const targetPos = busPos.clone().add(fpOffset);
+      this.camera.position.lerp(targetPos, 14.0 * delta);
+      const lookTarget = busPos.clone().add(forward.clone().multiplyScalar(18.0)).add(new THREE.Vector3(0, 1.8, 0));
+      this.camera.lookAt(lookTarget);
+
+    } else if (this.cameraMode === 'isometric') {
+      // 4. 대각선 장난감 쿼터뷰 (Isometric 뷰)
+      const isoOffset = new THREE.Vector3(14.0, 16.0, 14.0);
+      const targetPos = busPos.clone().add(isoOffset);
+      this.camera.position.lerp(targetPos, 7.0 * delta);
+      this.camera.lookAt(busPos.clone().add(new THREE.Vector3(0, 1.0, 0)));
+
+    } else if (this.cameraMode === 'top_down') {
+      // 5. 수직 헬리콥터 탑다운 뷰
+      const topOffset = new THREE.Vector3(0, 38, -12);
       const targetPos = busPos.clone().add(topOffset);
       this.camera.position.lerp(targetPos, 6.0 * delta);
       this.camera.lookAt(busPos);
@@ -713,11 +752,23 @@ export class TayoGame {
         }
       });
 
-      // 4. 카메라 및 미니맵, 속도계 업데이트
+      // 4. 카메라 및 미니맵, 속도계, 핸들 UI 각도 업데이트
       this.updateCamera(frameDelta, busPos, busQuat);
       this.drawMinimap(busPos, euler.y);
       this.updateSpeedometer(speedKmh);
       this.updateGuideDots(busPos);
+
+      // 온스크린 실시간 파워핸들 UI 각도 동기화
+      const steerDegrees = this.physics.getSteeringWheelDegrees();
+      const wheelEl = document.getElementById('steering-wheel-visual');
+      if (wheelEl) {
+        wheelEl.style.transform = `rotate(${steerDegrees}deg)`;
+      }
+      const steerTextEl = document.getElementById('steering-angle-text');
+      if (steerTextEl) {
+        const rounded = Math.round(steerDegrees);
+        steerTextEl.textContent = `${rounded > 0 ? '▶ +' : rounded < 0 ? '◀ ' : ''}${Math.abs(rounded)}°`;
+      }
 
       // 5. 신호등 판정
       const traffic = this.world.updateTrafficLights(this.totalTime);

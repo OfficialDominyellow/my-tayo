@@ -239,6 +239,47 @@ body, html {
     transition: width 0.1s ease-out;
 }
 
+/* 🌟 실시간 파워핸들 UI 위젯 */
+#steering-wheel-container {
+    position: absolute;
+    bottom: 114px;
+    left: 228px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.94);
+    border: 3px solid #38BDF8;
+    border-radius: 20px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    z-index: 10;
+    pointer-events: none;
+}
+
+#steering-wheel-visual {
+    width: 72px;
+    height: 72px;
+    transition: transform 0.05s linear;
+    transform-origin: center center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.steering-svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
+#steering-angle-text {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #0369A1;
+    font-family: 'Nanum Gothic', sans-serif;
+}
+
 /* 하단 터치 & 온스크린 컨트롤 버튼들 */
 #controls-container {
     position: absolute;

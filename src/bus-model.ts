@@ -835,11 +835,11 @@ export class BusModelFactory {
         const steerPivot = new THREE.Group();
         steerPivot.position.set(pos.x, wheelRadius, pos.z);
         steerPivot.add(wheelGroup);
-        root.add(steerPivot);
+        chassisGroup.add(steerPivot);
         steerPivots.push(steerPivot);
       } else {
         wheelGroup.position.set(pos.x, wheelRadius, pos.z);
-        root.add(wheelGroup);
+        chassisGroup.add(wheelGroup);
       }
 
       wheelMeshes.push(wheelGroup);

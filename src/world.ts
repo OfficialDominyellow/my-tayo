@@ -43,33 +43,39 @@ export class WorldManager {
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#334155';
+    // 아스팔트 기본 컬러
+    ctx.fillStyle = '#2D3748';
     ctx.fillRect(0, 0, 512, 512);
 
-    // 아스팔트 질감 노이즈
-    ctx.fillStyle = 'rgba(255,255,255,0.03)';
-    for (let i = 0; i < 120; i++) {
+    // 아스팔트 잔모래 질감 노이즈
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    for (let i = 0; i < 200; i++) {
+      ctx.fillRect(Math.random() * 512, Math.random() * 512, 3, 3);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    for (let i = 0; i < 150; i++) {
       ctx.fillRect(Math.random() * 512, Math.random() * 512, 4, 4);
     }
 
-    // 중앙 노란색 점선
+    // 중앙 노란색 복선 실선 (한국 도로 중앙선 규격: 선명한 황색 2줄)
     ctx.strokeStyle = '#FACC15';
-    ctx.lineWidth = 14;
-    ctx.setLineDash([48, 36]);
-    ctx.beginPath();
-    ctx.moveTo(256, 0);
-    ctx.lineTo(256, 512);
-    ctx.stroke();
-
-    // 양쪽 흰색 차선 및 보도블럭 경계
-    ctx.strokeStyle = '#F8FAFC';
-    ctx.lineWidth = 10;
+    ctx.lineWidth = 8;
     ctx.setLineDash([]);
     ctx.beginPath();
-    ctx.moveTo(32, 0);
-    ctx.lineTo(32, 512);
-    ctx.moveTo(480, 0);
-    ctx.lineTo(480, 512);
+    ctx.moveTo(248, 0);
+    ctx.lineTo(248, 512);
+    ctx.moveTo(264, 0);
+    ctx.lineTo(264, 512);
+    ctx.stroke();
+
+    // 양쪽 도로 가장자리 흰색 실선 (차선 경계)
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(36, 0);
+    ctx.lineTo(36, 512);
+    ctx.moveTo(476, 0);
+    ctx.lineTo(476, 512);
     ctx.stroke();
 
     const tex = new THREE.CanvasTexture(canvas);
@@ -211,6 +217,67 @@ export class WorldManager {
     createRoadMesh(108, 0, 226, false);
     createRoadMesh(-108, 0, 226, false);
 
+    // 🌟 곡선 로터리 (Central Circular Roundabout - 반경 18m의 대형 원형 교차로)
+    const roundaboutOuterR = 19.5;
+    const roundaboutInnerR = 9.0;
+    const roundaboutGeom = new THREE.RingGeometry(roundaboutInnerR, roundaboutOuterR, 48);
+    const roundaboutMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
+    const roundaboutMesh = new THREE.Mesh(roundaboutGeom, roundaboutMat);
+    roundaboutMesh.rotation.x = -Math.PI / 2;
+    roundaboutMesh.position.set(0, 0.025, 0);
+    this.scene.add(roundaboutMesh);
+
+    // 로터리 중앙 녹지 화단 및 분수 기단
+    const centerIslandGeom = new THREE.CylinderGeometry(roundaboutInnerR, roundaboutInnerR, 0.45, 36);
+    const centerIslandMat = new THREE.MeshStandardMaterial({ color: 0x4ADE80, roughness: 0.9 });
+    const centerIsland = new THREE.Mesh(centerIslandGeom, centerIslandMat);
+    centerIsland.position.set(0, 0.22, 0);
+    this.scene.add(centerIsland);
+    this.physics.addBoxCollider(0, 0.45, 0, roundaboutInnerR - 0.5, 0.45, roundaboutInnerR - 0.5);
+
+    // 로터리 원형 차선 도색
+    const guideRingGeom = new THREE.RingGeometry(14.0, 14.5, 48);
+    const guideRingMat = new THREE.MeshBasicMaterial({ color: 0xFACC15, side: THREE.DoubleSide });
+    const guideRing = new THREE.Mesh(guideRingGeom, guideRingMat);
+    guideRing.rotation.x = -Math.PI / 2;
+    guideRing.position.set(0, 0.03, 0);
+    this.scene.add(guideRing);
+
+    // 🌟 대각선 코너 완화 곡선 도로 (Scenic Curved Roads & Fillets)
+    const curveRadius = 24;
+    const createCurvedFillet = (cx: number, cz: number, startAngle: number, endAngle: number) => {
+      const ring = new THREE.RingGeometry(curveRadius - roadWidth / 2, curveRadius + roadWidth / 2, 24, 1, startAngle, endAngle - startAngle);
+      const ringMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85, side: THREE.DoubleSide });
+      const rMesh = new THREE.Mesh(ring, ringMat);
+      rMesh.rotation.x = -Math.PI / 2;
+      rMesh.position.set(cx, 0.024, cz);
+      this.scene.add(rMesh);
+    };
+
+    // 4개 분면의 부드러운 코너 연결 곡선로
+    createCurvedFillet(48, 48, Math.PI, Math.PI * 1.5);
+    createCurvedFillet(-48, 48, Math.PI * 1.5, Math.PI * 2.0);
+    createCurvedFillet(48, -48, Math.PI * 0.5, Math.PI);
+    createCurvedFillet(-48, -48, 0, Math.PI * 0.5);
+
+    // 🌟 3D 인도 보도턱 (Sidewalk Curbs: 도로와 잔디 경계에 15cm 보도턱 설치)
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0xCBD5E1, roughness: 0.7 });
+    const addCurb = (x: number, z: number, w: number, d: number) => {
+      const curb = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, d), curbMat);
+      curb.position.set(x, 0.11, z);
+      this.scene.add(curb);
+      // 살짝 걸리는 물리 턱 추가
+      this.physics.addBoxCollider(x, 0.12, z, w / 2, 0.12, d / 2);
+    };
+
+    // 주요 도로변 보도턱 블록들
+    [-53.6, -42.4, 42.4, 53.6].forEach(offset => {
+      addCurb(offset, 65, 0.5, 40);
+      addCurb(offset, -65, 0.5, 40);
+      addCurb(65, offset, 40, 0.5);
+      addCurb(-65, offset, 40, 0.5);
+    });
+
     // 교차로 횡단보도들
     const cwTex = this.createCrosswalkTexture();
     const cwMat = new THREE.MeshStandardMaterial({ map: cwTex, roughness: 0.8 });
@@ -223,14 +290,16 @@ export class WorldManager {
       this.scene.add(mesh);
     };
 
-    // 중앙 교차로 및 주요 사거리 횡단보도
+    // 로터리 진입부 및 주요 사거리 횡단보도
     [
-      [0, 8.5, true],
-      [0, -8.5, true],
-      [8.5, 0, false],
-      [-8.5, 0, false],
+      [0, 20.5, true],
+      [0, -20.5, true],
+      [20.5, 0, false],
+      [-20.5, 0, false],
       [48, 56.5, true],
-      [-48, -56.5, true]
+      [-48, -56.5, true],
+      [48, -56.5, true],
+      [-48, 56.5, true]
     ].forEach(([x, z, isH]) => addCrosswalk(x as number, z as number, isH as boolean));
   }
 
@@ -959,111 +1028,134 @@ export class WorldManager {
   }
 
   /**
-   * 6. 8개의 확장된 버스 정류장 및 귀여운 동물 승객들
+   * 실제 가족 사진 기반 귀여운 SD 캐릭터 생성 (선율, 태율, 엄마, 아빠)
+   * 몸통은 귀여운 3D SD 복장, 얼굴은 골드 테두리가 둘러진 원형 뱃지 사진
+   */
+  private createFamilyPassenger(badgeUrl: string, bodyColor: number, pantColor: number): THREE.Group {
+    const group = new THREE.Group();
+
+    // 1. 다리 / 하반신
+    const legGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.38, 10);
+    const legMat = new THREE.MeshStandardMaterial({ color: pantColor, roughness: 0.6 });
+    [-0.14, 0.14].forEach(lx => {
+      const leg = new THREE.Mesh(legGeom, legMat);
+      leg.position.set(lx, 0.19, 0);
+      group.add(leg);
+    });
+
+    // 2. 귀여운 SD 상체 (둥근 셔츠/스웨터)
+    const torsoGeom = new THREE.CylinderGeometry(0.28, 0.34, 0.52, 14);
+    const torsoMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5 });
+    const torso = new THREE.Mesh(torsoGeom, torsoMat);
+    torso.position.y = 0.58;
+    group.add(torso);
+
+    // 3. 작은 팔
+    const armGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.34, 8);
+    [-0.34, 0.34].forEach(ax => {
+      const arm = new THREE.Mesh(armGeom, torsoMat);
+      arm.position.set(ax, 0.56, 0);
+      arm.rotation.z = ax > 0 ? -0.35 : 0.35;
+      group.add(arm);
+    });
+
+    // 4. 머리 및 사진 뱃지 (앞뒤 양면으로 얼굴 사진이 선명하게 보이도록)
+    const textureLoader = new THREE.TextureLoader();
+    const faceTex = textureLoader.load(badgeUrl);
+    faceTex.colorSpace = THREE.SRGBColorSpace;
+
+    // 머리 지지대 (입체 구체)
+    const headBase = new THREE.Mesh(
+      new THREE.SphereGeometry(0.38, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0xFDE68A, roughness: 0.4 })
+    );
+    headBase.position.y = 1.15;
+    group.add(headBase);
+
+    // 골드 림 테두리 원형 메달/얼굴 사진
+    const badgeGeom = new THREE.CylinderGeometry(0.48, 0.48, 0.06, 32);
+    badgeGeom.rotateX(Math.PI / 2);
+    const badgeRimMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, metalness: 0.5, roughness: 0.3 });
+    const badgeFaceMat = new THREE.MeshBasicMaterial({ map: faceTex, transparent: true });
+
+    // 앞면 메달
+    const badgeFront = new THREE.Mesh(badgeGeom, [badgeRimMat, badgeFaceMat, badgeFaceMat]);
+    badgeFront.position.set(0, 1.18, 0.28);
+    group.add(badgeFront);
+
+    // 애니메이션 및 승차 데이터
+    group.userData = { animTime: Math.random() * 5, isBoarded: false, isFamily: true };
+    return group;
+  }
+
+  /**
+   * 6. 8개의 버스 정류장 구축
+   * ⚠️ 사용자 규칙 엄수: 우리 주인공 선율이, 태율이, 엄마, 아빠 가족은
+   * 전체 맵에서 각각 딱 1명씩만 랜덤 정류장에 유일하게 배치 (중복 절대 금지)
+   * 나머지 정류장은 귀여운 동물 친구들이 탑승 대기!
    */
   private buildBusStops(): void {
-    const stopsConfig = [
+    const stopsBase = [
+      { id: 1, name: '타요 차고지 정류장', icon: '🚌', x: -7.2, z: 18.0, targetStopName: '무지개 유치원 정류장' },
+      { id: 2, name: '무지개 유치원 정류장', icon: '🌈', x: 20.0, z: -7.2, targetStopName: '달콤 마트 정류장' },
+      { id: 3, name: '달콤 마트 정류장', icon: '🛒', x: 7.2, z: 24.0, targetStopName: '꿈나무 초등학교 정류장' },
+      { id: 4, name: '꿈나무 초등학교 정류장', icon: '🏫', x: -20.0, z: -7.2, targetStopName: '보글보글 세차장 정류장' },
+      { id: 5, name: '보글보글 세차장 정류장', icon: '🫧', x: 55.2, z: 36.0, targetStopName: '타요 놀이공원 정류장' },
+      { id: 6, name: '타요 놀이공원 정류장', icon: '🎡', x: 48.0, z: 92.0, targetStopName: '용감한 소방서 정류장' },
+      { id: 7, name: '용감한 소방서 정류장', icon: '🚒', x: -55.2, z: 26.0, targetStopName: '풍차 마을 정류장' },
+      { id: 8, name: '풍차 마을 정류장', icon: '🌾', x: -55.2, z: -72.0, targetStopName: '타요 차고지 정류장' }
+    ];
+
+    // 가족 4명 (맵 전체에 오직 1개씩만 등장!)
+    const familyPool = [
       {
-        id: 1,
-        name: '타요 차고지 정류장',
-        icon: '🚌',
-        x: -7.2,
-        z: 18.0,
-        passengerName: '노란 삐약이',
-        passengerIcon: '🐥',
-        color: 0xFFEB3B,
-        isBunny: false,
-        targetStopName: '무지개 유치원 정류장'
+        name: '선율이',
+        icon: '👦',
+        badge: '/family/sunyul_badge.png',
+        bodyColor: 0x38BDF8, // 하늘색 티셔츠
+        pantColor: 0x1E293B
       },
       {
-        id: 2,
-        name: '무지개 유치원 정류장',
-        icon: '🌈',
-        x: 20.0,
-        z: -7.2,
-        passengerName: '아기 곰돌이',
-        passengerIcon: '🐻',
-        color: 0xA1887F,
-        isBunny: false,
-        targetStopName: '달콤 마트 정류장'
+        name: '태율이',
+        icon: '👶',
+        badge: '/family/taeyul_badge.png',
+        bodyColor: 0xFACC15, // 노란색 귀여운 티셔츠
+        pantColor: 0x0284C7
       },
       {
-        id: 3,
-        name: '달콤 마트 정류장',
-        icon: '🛒',
-        x: 7.2,
-        z: 24.0,
-        passengerName: '깡총 토끼',
-        passengerIcon: '🐰',
-        color: 0xF8FAFC,
-        isBunny: true,
-        targetStopName: '꿈나무 초등학교 정류장'
+        name: '엄마',
+        icon: '👩',
+        badge: '/family/mom_badge.png',
+        bodyColor: 0xF472B6, // 핑크 니트
+        pantColor: 0x475569
       },
       {
-        id: 4,
-        name: '꿈나무 초등학교 정류장',
-        icon: '🏫',
-        x: -20.0,
-        z: -7.2,
-        passengerName: '멍멍 강아지',
-        passengerIcon: '🐶',
-        color: 0xFDBA74,
-        isBunny: false,
-        targetStopName: '보글보글 세차장 정류장'
-      },
-      {
-        id: 5,
-        name: '보글보글 세차장 정류장',
-        icon: '🫧',
-        x: 55.2,
-        z: 36.0,
-        passengerName: '야옹 고양이',
-        passengerIcon: '🐱',
-        color: 0xF9A8D4,
-        isBunny: false,
-        targetStopName: '타요 놀이공원 정류장'
-      },
-      {
-        id: 6,
-        name: '타요 놀이공원 정류장',
-        icon: '🎡',
-        x: 48.0,
-        z: 92.0,
-        passengerName: '귀여운 판다',
-        passengerIcon: '🐼',
-        color: 0xE2E8F0,
-        isBunny: false,
-        targetStopName: '용감한 소방서 정류장'
-      },
-      {
-        id: 7,
-        name: '용감한 소방서 정류장',
-        icon: '🚒',
-        x: -55.2,
-        z: 26.0,
-        passengerName: '뿌우 코끼리',
-        passengerIcon: '🐘',
-        color: 0x93C5FD,
-        isBunny: false,
-        targetStopName: '풍차 마을 정류장'
-      },
-      {
-        id: 8,
-        name: '풍차 마을 정류장',
-        icon: '🌾',
-        x: -55.2,
-        z: -72.0,
-        passengerName: '개굴 개구리',
-        passengerIcon: '🐸',
-        color: 0x86EFAC,
-        isBunny: false,
-        targetStopName: '타요 차고지 정류장'
+        name: '아빠',
+        icon: '👨',
+        badge: '/family/dad_badge.png',
+        bodyColor: 0x34D399, // 포근한 민트그린
+        pantColor: 0x1E3A8A
       }
     ];
 
-    stopsConfig.forEach(cfg => {
+    // 동물 친구 풀
+    const animalPool = [
+      { name: '노란 삐약이', icon: '🐥', color: 0xFFEB3B, isBunny: false },
+      { name: '아기 곰돌이', icon: '🐻', color: 0xA1887F, isBunny: false },
+      { name: '깡총 토끼', icon: '🐰', color: 0xF8FAFC, isBunny: true },
+      { name: '멍멍 강아지', icon: '🐶', color: 0xFDBA74, isBunny: false }
+    ];
+
+    // 8개 정류장 인덱스 [0..7] 중 4자리를 비복원 무작위 추출하여 가족 4인 배정
+    const stopIndices = [0, 1, 2, 3, 4, 5, 6, 7].sort(() => Math.random() - 0.5);
+    const familyIndices = new Set(stopIndices.slice(0, 4));
+
+    let familyIdx = 0;
+    let animalIdx = 0;
+
+    stopsBase.forEach((base, idx) => {
       const group = new THREE.Group();
-      group.position.set(cfg.x, 0, cfg.z);
+      group.position.set(base.x, 0, base.z);
 
       // 노란색 정차 바닥 구역
       const zone = new THREE.Mesh(
@@ -1085,30 +1177,46 @@ export class WorldManager {
       const sign = new THREE.Mesh(
         new THREE.PlaneGeometry(4.2, 1.0),
         new THREE.MeshBasicMaterial({
-          map: this.createSignBannerTexture(`${cfg.icon} ${cfg.name}`, '#0284C7'),
+          map: this.createSignBannerTexture(`${base.icon} ${base.name}`, '#0284C7'),
           side: THREE.DoubleSide
         })
       );
       sign.position.set(2.4, 3.2, 0);
       group.add(sign);
 
-      const passenger = this.createCutePassenger(cfg.color, cfg.isBunny);
-      passenger.position.set(2.4, 0, 1.1);
-      group.add(passenger);
+      let passengerMesh: THREE.Group;
+      let passengerName: string;
+      let passengerIcon: string;
+      const isFamily = familyIndices.has(idx);
 
+      if (isFamily) {
+        const f = familyPool[familyIdx++];
+        passengerName = f.name;
+        passengerIcon = f.icon;
+        passengerMesh = this.createFamilyPassenger(f.badge, f.bodyColor, f.pantColor);
+      } else {
+        const a = animalPool[animalIdx++];
+        passengerName = a.name;
+        passengerIcon = a.icon;
+        passengerMesh = this.createCutePassenger(a.color, a.isBunny);
+      }
+
+      passengerMesh.position.set(2.4, 0, 1.1);
+      group.add(passengerMesh);
       this.scene.add(group);
 
       this.busStops.push({
-        id: cfg.id,
-        name: cfg.name,
-        icon: cfg.icon,
-        x: cfg.x,
-        z: cfg.z,
-        targetStopName: cfg.targetStopName,
-        passengerName: cfg.passengerName,
-        passengerIcon: cfg.passengerIcon,
-        passengerMesh: passenger,
-        hasPassenger: true
+        id: base.id,
+        name: base.name,
+        icon: base.icon,
+        x: base.x,
+        z: base.z,
+        targetStopName: base.targetStopName,
+        passengerName,
+        passengerIcon,
+        passengerMesh,
+        hasPassenger: true,
+        isFamily
       });
     });
   }

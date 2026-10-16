@@ -3,6 +3,7 @@ import * as THREE from 'three';
 export type BusType = 'tayo' | 'rogi' | 'lani' | 'gani';
 export type ExpressionType = 'normal' | 'happy' | 'wink' | 'surprised';
 export type TimeOfDay = 'day' | 'sunset' | 'night';
+export type CameraMode = 'chase' | 'front_face' | 'first_person' | 'isometric' | 'top_down';
 
 export interface BusConfig {
   id: BusType;
@@ -64,6 +65,7 @@ export interface BusStopData {
   passengerIcon: string;
   passengerMesh: THREE.Group;
   hasPassenger: boolean;
+  isFamily?: boolean;
 }
 
 export interface InteractiveZone {
