@@ -4,6 +4,7 @@ export type BusType = 'tayo' | 'rogi' | 'lani' | 'gani' | 'pat' | 'frank' | 'ali
 export type VehicleRole = 'bus' | 'police' | 'firetruck' | 'ambulance';
 export type ExpressionType = 'normal' | 'happy' | 'wink' | 'surprised';
 export type TimeOfDay = 'day' | 'sunset' | 'night';
+export type WeatherType = 'clear' | 'blossom' | 'rain_rainbow' | 'snow';
 export type CameraMode = 'chase' | 'front_face' | 'first_person' | 'isometric' | 'top_down';
 
 export interface BusConfig {
@@ -66,6 +67,7 @@ export interface BusStopData {
   targetStopName: string;
   passengerName: string;
   passengerIcon: string;
+  passengerPhotoUrl?: string;
   passengerMesh: THREE.Group;
   hasPassenger: boolean;
   isFamily?: boolean;
@@ -75,6 +77,8 @@ export type InteractiveZoneType =
   | 'carwash'
   | 'station'
   | 'garage'
+  | 'repair_shop'
+  | 'f1_pitstop'
   | 'police_station'
   | 'fire_station'
   | 'hospital';

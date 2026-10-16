@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { PhysicsEngine } from './physics';
 import { WorldManager } from './world';
 import { BusModelFactory, BusVisualInstance } from './bus-model';
@@ -11,7 +16,9 @@ import {
   DebugMetrics,
   EmergencyDispatchMission,
   InputState,
-  TimeOfDay
+  InteractiveZone,
+  TimeOfDay,
+  WeatherType
 } from './types';
 
 export class TayoGame {
@@ -19,6 +26,8 @@ export class TayoGame {
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
   public renderer: THREE.WebGLRenderer;
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
   private hemiLight: THREE.HemisphereLight | null = null;
   private dirLight: THREE.DirectionalLight | null = null;
 
@@ -32,6 +41,7 @@ export class TayoGame {
   private currentPassenger: {
     name: string;
     icon: string;
+    photoUrl?: string;
     targetStopName: string;
     mesh: THREE.Group;
   } | null = null;
@@ -41,6 +51,12 @@ export class TayoGame {
   private sirenLoopTimer: number = 0;
   private f1SoundCooldown: number = 0;
   private pedestrianBonusCooldown: number = 0;
+
+  // 🛠️ 실시간 시설 상호작용(주유소·정비소·세차장·차고지·F1 피트스탑) 진행 상태
+  private activeFacilityZone: InteractiveZone | null = null;
+  private facilityProgress: number = 0;
+  private facilitySoundTimer: number = 0;
+  private completedFacilityId: string | null = null;
 
   private guideArrow: THREE.Group | null = null;
   private guideDots: THREE.Mesh[] = [];
@@ -86,13 +102,13 @@ export class TayoGame {
     // 1. Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x87CEEB);
-    this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0032);
+    this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0024);
 
-    // 2. Camera (확장된 520m 월드를 시원하게 볼 수 있도록 far 클리핑 확장)
-    this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 560);
+    // 2. Camera (확장된 680m 메트로폴리탄 + 해변 월드를 시원하게 볼 수 있도록 far 클리핑 확장)
+    this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 680);
     this.camera.position.set(0, 10, -15);
 
-    // 3. WebGLRenderer (색감 및 톤매핑 개선)
+    // 3. WebGLRenderer (2026 SOTA PBR 색감 및 ACES Filmic 톤매핑)
     this.renderer = new THREE.WebGLRenderer({
       powerPreference: 'high-performance',
       antialias: true
@@ -102,10 +118,26 @@ export class TayoGame {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.08;
     this.container.appendChild(this.renderer.domElement);
 
-    // 4. 물리 엔진 & 월드 매니저
+    // 4. 2026 SOTA Post-Processing 파이프라인 (RenderPass + UnrealBloomPass + OutputPass)
+    this.composer = new EffectComposer(this.renderer);
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.18, // strength (낮에는 은은한 하이라이트, 밤에는 네온/가로등 글로우 강화)
+      0.45, // radius
+      0.86  // threshold
+    );
+    this.composer.addPass(this.bloomPass);
+
+    const outputPass = new OutputPass();
+    this.composer.addPass(outputPass);
+
+    // 5. 물리 엔진 & 월드 매니저
     this.physics = new PhysicsEngine();
     this.world = new WorldManager(this.scene, this.physics);
 
@@ -117,6 +149,21 @@ export class TayoGame {
   }
 
   public async init(): Promise<void> {
+    // 0. PBR RoomEnvironment 반사광 텍스처 생성 (유리 마천루, F1 차체, 바다 윤슬의 2026 SOTA 반사 품질 향상)
+    try {
+      const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+      pmremGenerator.compileEquirectangularShader();
+      const envScene = new RoomEnvironment();
+      this.scene.environment = pmremGenerator.fromScene(envScene, 0.04).texture;
+      this.scene.environmentIntensity = 0.35;
+      envScene.traverse(obj => {
+        if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
+      });
+      pmremGenerator.dispose();
+    } catch {
+      // 구형 GPU 폴백
+    }
+
     // 1. 입체감을 살려주는 반구형 환경광 + 태양 직사광 세팅
     this.hemiLight = new THREE.HemisphereLight(0xFFFFFF, 0x689F38, 0.85);
     this.hemiLight.position.set(0, 80, 0);
@@ -128,8 +175,8 @@ export class TayoGame {
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 10;
-    this.dirLight.shadow.camera.far = 320;
-    const d = 125;
+    this.dirLight.shadow.camera.far = 360;
+    const d = 140;
     this.dirLight.shadow.camera.left = -d;
     this.dirLight.shadow.camera.right = d;
     this.dirLight.shadow.camera.top = d;
@@ -341,12 +388,13 @@ export class TayoGame {
     this.updateMissionBanner();
   }
 
-  // 낮 / 노을 / 밤 시간대 전환 (헤드라이트 및 가로등 점등!)
+  // 낮 / 노을 / 밤 시간대 전환 (헤드라이트, 가로등, 빌딩 네온 및 UnrealBloom 강도 조절!)
   public toggleTimeOfDay(): TimeOfDay {
+    const btnTime = document.getElementById('btn-time');
     if (this.timeOfDay === 'day') {
       this.timeOfDay = 'sunset';
       this.scene.background = new THREE.Color(0xFD7E53);
-      this.scene.fog = new THREE.FogExp2(0xFD7E53, 0.0032);
+      this.scene.fog = new THREE.FogExp2(0xFD7E53, 0.0024);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0xFFCCBC);
         this.hemiLight.groundColor.setHex(0x4E342E);
@@ -356,27 +404,31 @@ export class TayoGame {
         this.dirLight.color.setHex(0xFFAB40);
         this.dirLight.intensity = 0.9;
       }
-      this.showPopup('🌅 노을 지는 저녁이에요! 가로등과 헤드라이트가 켜졌어요!');
+      if (this.bloomPass) this.bloomPass.strength = 0.28;
+      if (btnTime) btnTime.innerHTML = '<span>🌅</span><span>노을</span>';
+      this.showPopup('🌅 노을 지는 저녁이에요! 가로등과 마천루 조명이 켜졌어요!');
       soundManager.speak('예쁜 노을이 지고 있어요! 가로등과 헤드라이트를 켰어요!');
     } else if (this.timeOfDay === 'sunset') {
       this.timeOfDay = 'night';
-      this.scene.background = new THREE.Color(0x0F172A);
-      this.scene.fog = new THREE.FogExp2(0x0F172A, 0.0038);
+      this.scene.background = new THREE.Color(0x0B132B);
+      this.scene.fog = new THREE.FogExp2(0x0B132B, 0.0028);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0x38BDF8);
-        this.hemiLight.groundColor.setHex(0x0F172A);
-        this.hemiLight.intensity = 0.42;
+        this.hemiLight.groundColor.setHex(0x0B132B);
+        this.hemiLight.intensity = 0.45;
       }
       if (this.dirLight) {
         this.dirLight.color.setHex(0x93C5FD);
-        this.dirLight.intensity = 0.45;
+        this.dirLight.intensity = 0.48;
       }
-      this.showPopup('🌙 반짝반짝 밤이에요! 가로등 불빛이 도로를 비춰요!');
-      soundManager.speak('밤이 되었어요! 환한 가로등 불빛 아래 안전하게 달려요!');
+      if (this.bloomPass) this.bloomPass.strength = 0.42;
+      if (btnTime) btnTime.innerHTML = '<span>🌙</span><span>밤</span>';
+      this.showPopup('🌙 반짝반짝 밤이에요! 마천루 네온사인과 등대 불빛이 빛나요!');
+      soundManager.speak('밤이 되었어요! 환한 가로등과 등대 불빛 아래 안전하게 달려요!');
     } else {
       this.timeOfDay = 'day';
       this.scene.background = new THREE.Color(0x87CEEB);
-      this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0032);
+      this.scene.fog = new THREE.FogExp2(0x87CEEB, 0.0024);
       if (this.hemiLight) {
         this.hemiLight.color.setHex(0xFFFFFF);
         this.hemiLight.groundColor.setHex(0x689F38);
@@ -386,6 +438,8 @@ export class TayoGame {
         this.dirLight.color.setHex(0xFFFDF0);
         this.dirLight.intensity = 1.15;
       }
+      if (this.bloomPass) this.bloomPass.strength = 0.18;
+      if (btnTime) btnTime.innerHTML = '<span>☀️</span><span>낮</span>';
       this.showPopup('🌞 맑고 화창한 아침이에요!');
       soundManager.speak('해가 쨍쨍! 즐거운 아침이에요!');
     }
@@ -397,6 +451,32 @@ export class TayoGame {
     return this.timeOfDay;
   }
 
+  /**
+   * 🌦️🌈 실시간 3D 날씨 & 초대형 무지개 토글 (맑음 -> 무지개 소나기 -> 분홍 벚꽃비)
+   */
+  public toggleWeather(): WeatherType {
+    const next = this.world.cycleWeather();
+    const btnWeather = document.getElementById('btn-weather');
+    if (next === 'rain_rainbow') {
+      if (btnWeather) btnWeather.innerHTML = '<span>🌈</span><span>무지개비</span>';
+      this.showPopup('🌦️🌈 시원한 비와 함께 하늘에 커다란 일곱빛깔 무지개가 떴어요!');
+      soundManager.speak('우와! 하늘을 봐요! 시원한 비가 내리고 커다란 일곱빛깔 무지개가 떴어요!');
+    } else if (next === 'blossom') {
+      if (btnWeather) btnWeather.innerHTML = '<span>🌸</span><span>벚꽃비</span>';
+      this.showPopup('🌸 살랑살랑 분홍빛 봄꽃 벚꽃잎이 하늘에서 내려와요!');
+      soundManager.speak('우와! 예쁜 분홍색 벚꽃잎이 하늘에서 살랑살랑 내려와요!');
+    } else if (next === 'snow') {
+      if (btnWeather) btnWeather.innerHTML = '<span>❄️</span><span>함박눈</span>';
+      this.showPopup('❄️ 포슬포슬 하얀 함박눈이 온 도시에 내려요!');
+      soundManager.speak('우와! 하늘에서 포슬포슬 하얀 눈송이가 내려와요!');
+    } else {
+      if (btnWeather) btnWeather.innerHTML = '<span>☀️</span><span>맑음</span>';
+      this.showPopup('☀️ 구름 한 점 없이 맑고 화창한 날씨예요!');
+      soundManager.speak('다시 맑고 화창한 날씨가 되었어요!');
+    }
+    return next;
+  }
+
   // 4세 운전 보조 토글
   public toggleKidAssist(): boolean {
     this.physics.kidAssistEnabled = !this.physics.kidAssistEnabled;
@@ -405,12 +485,12 @@ export class TayoGame {
     return this.physics.kidAssistEnabled;
   }
 
-  // 언제든 상단 버튼으로 한글/숫자/영어/안전 놀이 열기
+  // 언제든 상단 버튼으로 한글/숫자/영어/안전/음악 놀이 열기
   public openLearningNow(): void {
     if (educationManager.isOpen) return;
     this.resetInput();
     educationManager.openMissionActivity(null, starsEarned => {
-      this.addStar('🎓 신나는 한글·숫자·영어·안전 놀이 완료!', starsEarned);
+      this.addStar('🎓 신나는 한글·숫자·영어·안전·음악 놀이 완료!', starsEarned);
       this.visualBus?.setExpression('happy', 3.0);
     });
   }
@@ -447,7 +527,7 @@ export class TayoGame {
       this.renderer.shadowMap.enabled = true;
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       if (this.dirLight) this.dirLight.castShadow = true;
-      this.showPopup('✨ 고품질 그래픽 모드');
+      this.showPopup('✨ 2026 SOTA 고품질 블룸 그래픽 모드');
     }
   }
 
@@ -516,10 +596,13 @@ export class TayoGame {
       banner.innerHTML = `<span style="color:#FEF08A">${this.activeDispatch.title}</span> (무지개 유도선을 따라가세요!)`;
       banner.classList.add('active-mission');
     } else if (this.currentPassenger && this.targetStop) {
-      banner.innerHTML = `${this.currentPassenger.icon} <strong>${this.currentPassenger.name}</strong> 탑승 중 ➔ 목적지: <strong>${this.targetStop.icon} ${this.targetStop.name}</strong> (무지개 별을 따라가세요!)`;
+      const photoHtml = this.currentPassenger.photoUrl
+        ? `<img src="${this.currentPassenger.photoUrl}" class="mission-family-photo" alt="${this.currentPassenger.name}" />`
+        : '';
+      banner.innerHTML = `${photoHtml}${this.currentPassenger.icon} <strong>${this.currentPassenger.name}</strong> 탑승 중 ➔ 목적지: <strong>${this.targetStop.icon} ${this.targetStop.name}</strong> (무지개 별을 따라가세요!)`;
       banner.classList.add('active-mission');
     } else {
-      banner.innerHTML = `🚏 노란 <strong>정류장</strong>에서 가족·동물 친구를 태우거나 <strong>🚨 긴급출동</strong> 버튼으로 소방서·경찰서·병원 미션을 시작하세요!`;
+      banner.innerHTML = `🚏 노란 <strong>정류장</strong>에서 우리 가족·동물 친구를 태우거나 <strong>⛽주유소 · 🔧정비소 · 🫧세차장 · 🏠차고지 · 🏖️해변</strong>을 방문해보세요!`;
       banner.classList.remove('active-mission');
     }
   }
@@ -528,6 +611,9 @@ export class TayoGame {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    if (this.composer) {
+      this.composer.setSize(window.innerWidth, window.innerHeight);
+    }
   }
 
   private checkTrafficRules(
@@ -578,7 +664,157 @@ export class TayoGame {
   }
 
   /**
-   * 정류장 승객 탑승 & 4세 한글·숫자·영어·안전 미션 연동 & 목적지 도착 판정
+   * 🛠️ 주유소·정비소·세차장·차고지·F1 피트스탑 실시간 상호작용 게이지 시스템
+   * 각 건물 부지 안에 들어가면 0% -> 100% 실시간 게이지가 차오르며 사운드와 3D 애니메이션이 작동합니다!
+   */
+  private updateFacilityInteraction(dt: number, busPos: THREE.Vector3, speedKmh: number): void {
+    const hudEl = document.getElementById('facility-action-hud');
+    const iconEl = document.getElementById('facility-hud-icon');
+    const titleEl = document.getElementById('facility-hud-title');
+    const pctEl = document.getElementById('facility-hud-pct');
+    const fillEl = document.getElementById('facility-hud-bar-fill');
+    const descEl = document.getElementById('facility-hud-desc');
+
+    // 서비스 게이지 대상 시설 찾기
+    let currentZone: InteractiveZone | null = null;
+    for (const z of this.world.interactiveZones) {
+      if (
+        z.type === 'station' ||
+        z.type === 'repair_shop' ||
+        z.type === 'carwash' ||
+        z.type === 'garage' ||
+        z.type === 'f1_pitstop'
+      ) {
+        const d = Math.hypot(busPos.x - z.x, busPos.z - z.z);
+        if (d < z.radius) {
+          currentZone = z;
+          break;
+        }
+      }
+    }
+
+    if (!currentZone) {
+      this.activeFacilityZone = null;
+      this.facilityProgress = 0;
+      this.completedFacilityId = null;
+      if (hudEl && !hudEl.classList.contains('hidden')) {
+        hudEl.classList.add('hidden');
+      }
+      return;
+    }
+
+    // 이미 방금 완료한 시설에 계속 머물러 있는 경우
+    if (this.completedFacilityId === currentZone.id) {
+      return;
+    }
+
+    if (this.activeFacilityZone?.id !== currentZone.id) {
+      this.activeFacilityZone = currentZone;
+      this.facilityProgress = 0;
+      this.facilitySoundTimer = 0;
+      if (currentZone.type === 'carwash') {
+        soundManager.playCarWash();
+      } else if (currentZone.type === 'garage') {
+        soundManager.playDoor();
+      }
+    }
+
+    if (hudEl) hudEl.classList.remove('hidden');
+
+    // 각 시설별 아이콘·타이틀·속도 설정
+    const configMap: Record<
+      string,
+      { icon: string; title: string; desc: string; fillRate: number; completeMsg: string; completeVoice: string; stars: number }
+    > = {
+      station: {
+        icon: '⛽⚡',
+        title: '싱싱 주유소 & 초고속 충전 중...',
+        desc: '꿀렁꿀렁! 에너지를 100% 가득 채우고 있어요!',
+        fillRate: 0.45,
+        completeMsg: '⛽⚡ 주유 & 초고속 충전 100% 완료! 힘이 불끈불끈 솟아요!',
+        completeVoice: '주유소에서 기름과 전기를 백 퍼센트 가득 채웠어요! 힘차게 출발!',
+        stars: 2
+      },
+      repair_shop: {
+        icon: '🔧🛠️',
+        title: '하나 누나의 척척 정비소 점검 중...',
+        desc: '유압 리프트와 로봇 렌치 팔이 타이어와 엔진을 정밀 수리해요!',
+        fillRate: 0.42,
+        completeMsg: '🔧✨ 하나 누나 정비소에서 엔진·타이어 튜닝 완료! 새 차처럼 쌩쌩해요!',
+        completeVoice: '하나 누나가 엔진과 바퀴를 완벽하게 고쳐줬어요! 고마워요 하나 누나!',
+        stars: 2
+      },
+      carwash: {
+        icon: '🫧🚿',
+        title: '보글보글 자동 세차장 목욕 중...',
+        desc: '회전 브러시와 비누거품으로 반짝반짝 목욕해요!',
+        fillRate: 0.48,
+        completeMsg: '🫧✨ 보글보글 세차 완료! 차체가 거울처럼 반짝반짝 빛나요!',
+        completeVoice: '보글보글 쏴아! 세차장에서 목욕을 마쳐서 반짝반짝 깨끗해졌어요!',
+        stars: 2
+      },
+      garage: {
+        icon: '🏠🚌',
+        title: '꼬마버스 차고지 베이 휴식 중...',
+        desc: '차고지 안에서 편안하게 쉬며 컨디션을 회복해요!',
+        fillRate: 0.5,
+        completeMsg: '🏠💖 차고지 휴식 완료! 오늘도 안전 운행 출발해볼까요?',
+        completeVoice: '따뜻한 차고지에서 푹 쉬었어요! 다시 신나게 출발해볼까요?',
+        stars: 2
+      },
+      f1_pitstop: {
+        icon: '🏎️🛞',
+        title: 'F1 그랑프리 피트스탑 타이어 교체 중...',
+        desc: '초고속 임팩트 렌치로 레이싱 슬릭 타이어를 장착해요!',
+        fillRate: 0.65,
+        completeMsg: '🏎️⚡ 2.1초 F1 피트스탑 타이어 교체 완료! 레이싱카처럼 달려봐요!',
+        completeVoice: '우와! 에프원 피트스탑에서 초고속 타이어 교체를 완료했어요!',
+        stars: 3
+      }
+    };
+
+    const cfg = configMap[currentZone.type] || configMap.station;
+    const speedFactor = Math.abs(speedKmh) < 12 ? 1.0 : 0.45;
+    this.facilityProgress = Math.min(1.0, this.facilityProgress + dt * cfg.fillRate * speedFactor);
+
+    const pct = Math.round(this.facilityProgress * 100);
+    if (iconEl) iconEl.textContent = cfg.icon;
+    if (titleEl) titleEl.textContent = cfg.title;
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (fillEl) fillEl.style.width = `${pct}%`;
+    if (descEl) descEl.textContent = cfg.desc;
+
+    // 진행 중 효과음 재생 (주유 꿀렁꿀렁 음, 정비소 임팩트 렌치 음)
+    this.facilitySoundTimer -= dt;
+    if (this.facilitySoundTimer <= 0 && this.facilityProgress < 1.0) {
+      if (currentZone.type === 'station') {
+        soundManager.playRefuelGlug(this.facilityProgress);
+        this.facilitySoundTimer = 0.28;
+      } else if (currentZone.type === 'repair_shop' || currentZone.type === 'f1_pitstop') {
+        soundManager.playRepairWrench();
+        this.facilitySoundTimer = 0.36;
+      } else {
+        this.facilitySoundTimer = 0.5;
+      }
+    }
+
+    // 100% 완료 시 보상 지급!
+    if (this.facilityProgress >= 1.0) {
+      this.completedFacilityId = currentZone.id;
+      soundManager.playCelebration();
+      soundManager.speak(cfg.completeVoice);
+      this.addStar(cfg.completeMsg, cfg.stars);
+      this.visualBus?.setExpression('happy', 4.0);
+      setTimeout(() => {
+        if (hudEl && this.completedFacilityId === currentZone?.id) {
+          hudEl.classList.add('hidden');
+        }
+      }, 1200);
+    }
+  }
+
+  /**
+   * 정류장 승객 탑승 & 4세 한글·숫자·영어·안전·음악 미션 연동 & 목적지 도착 판정
    */
   private checkBusStops(busPos: THREE.Vector3): void {
     if (educationManager.isOpen) return;
@@ -600,16 +836,17 @@ export class TayoGame {
       }
     }
 
-    // 4세 아이가 쉽게 정차할 수 있도록 정차 반경(5.8m) 및 허용 속도(3.4km/h)를 넉넉하게 설정
+    // 4세 아이가 쉽게 정차할 수 있도록 정차 반경(6.2m) 및 허용 속도(3.8km/h)를 넉넉하게 설정
     for (const stop of this.world.busStops) {
       const dist = Math.hypot(busPos.x - stop.x, busPos.z - stop.z);
 
-      if (dist < 5.8 && Math.abs(speedKmh) < 3.4) {
+      if (dist < 6.2 && Math.abs(speedKmh) < 3.8) {
         if (stop.hasPassenger && !this.currentPassenger) {
           stop.hasPassenger = false;
           this.currentPassenger = {
             name: stop.passengerName,
             icon: stop.passengerIcon,
+            photoUrl: stop.passengerPhotoUrl,
             targetStopName: stop.targetStopName,
             mesh: stop.passengerMesh
           };
@@ -633,13 +870,14 @@ export class TayoGame {
           this.updateMissionBanner();
           this.resetInput();
 
-          // 승객 탑승 시 4세 맞춤형 한글/숫자/영어/안전 놀이 미션 팝업 오픈!
+          // 승객 탑승 시 4세 맞춤형 한글/숫자/영어/안전/음악 놀이 미션 팝업 오픈!
           setTimeout(() => {
             educationManager.openMissionActivity(
               {
                 icon: stop.passengerIcon,
                 name: stop.passengerName,
-                targetStopName: stop.targetStopName
+                targetStopName: stop.targetStopName,
+                photoUrl: stop.passengerPhotoUrl
               },
               starsEarned => {
                 this.visualBus?.setDoorOpen(false);
@@ -736,7 +974,7 @@ export class TayoGame {
   }
 
   /**
-   * 🗺️ 우측 상단 실시간 미니맵 렌더링 (실제 3D 월드 도로망 100% 동기화: 중앙 로터리 + 직선 도로 + 외곽 곡선 커브 + 랜드마크 + F1/긴급 차량!)
+   * 🗺️ 우측 상단 실시간 미니맵 렌더링 (실제 3D 메트로폴리탄 도로망 + 에메랄드 해변 + 특급열차 + 랜드마크 + F1/긴급 차량 100% 동기화!)
    */
   private drawMinimap(busPos: THREE.Vector3, busHeading: number): void {
     const ctx = this.minimapCtx;
@@ -744,15 +982,32 @@ export class TayoGame {
 
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
-    const scale = w / 330; // 확장된 월드 -165m ~ +165m 영역을 한눈에 매핑
+    const scale = w / 430; // 확장된 월드(-200m ~ +220m, 해안도로 z=184 포함)를 한눈에 매핑
     const toMapX = (wx: number) => w / 2 + wx * scale;
-    const toMapY = (wz: number) => h / 2 - wz * scale; // +Z가 북쪽(위), -Z가 남쪽(아래)
+    const toMapY = (wz: number) => h / 2 + 8 - wz * scale; // +Z가 위쪽, -Z가 아래쪽
 
     ctx.clearRect(0, 0, w, h);
 
-    // 1. 잔디 배경
+    // 1. 잔디 배경 & 에메랄드 해변 바다 영역 표시
     ctx.fillStyle = this.timeOfDay === 'night' ? '#0F172A' : '#86EFAC';
     ctx.fillRect(0, 0, w, h);
+
+    // 해변 백사장 및 바다 (z > 192)
+    const beachTopY = toMapY(230);
+    const sandBottomY = toMapY(192);
+    ctx.fillStyle = '#FDE68A';
+    ctx.fillRect(0, Math.max(0, beachTopY), w, Math.max(4, sandBottomY - beachTopY));
+    ctx.fillStyle = '#0284C7';
+    ctx.fillRect(0, 0, w, Math.max(6, beachTopY));
+
+    // 외곽 순환 철도 궤도 (R = 152m)
+    ctx.strokeStyle = 'rgba(120, 53, 15, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(toMapX(0), toMapY(0), 152 * scale, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // 2. 실제 3D 도로망 (`this.world.minimapRoads`) 100% 동기화 렌더링!
     ctx.lineCap = 'butt';
@@ -787,7 +1042,7 @@ export class TayoGame {
 
         // 아스팔트 본체
         ctx.strokeStyle = '#334155';
-        ctx.lineWidth = Math.max(4, seg.width * scale);
+        ctx.lineWidth = Math.max(3.5, seg.width * scale);
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
@@ -795,7 +1050,7 @@ export class TayoGame {
 
         // 노란색 중앙 차선
         ctx.strokeStyle = '#FACC15';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 0.9;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
@@ -805,35 +1060,47 @@ export class TayoGame {
         const cy = toMapY(seg.cz);
         const r = seg.radius * scale;
 
-        // 3D RingGeometry의 (cx + r*cos(t), cz - r*sin(t))는 미니맵 (toMapX, toMapY)에서 정확히 표준 각도 [startAngle, endAngle]에 대응!
         ctx.strokeStyle = '#334155';
-        ctx.lineWidth = Math.max(4, seg.width * scale);
+        ctx.lineWidth = Math.max(3.5, seg.width * scale);
         ctx.beginPath();
         ctx.arc(cx, cy, r, seg.startAngle, seg.endAngle);
         ctx.stroke();
 
         ctx.strokeStyle = '#FACC15';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 0.9;
         ctx.beginPath();
         ctx.arc(cx, cy, r, seg.startAngle, seg.endAngle);
         ctx.stroke();
       }
     });
 
-    // 3. 주요 인터랙티브 시설 (경찰서🚓, 소방서🚒, 병원🏥, 차고지🚌, 세차장🫧, 충전소⚡) 표시
+    // 3. 주요 인터랙티브 시설 (경찰서🚓, 소방서🚒, 병원🏥, 차고지🏠, 세차장🫧, 주유소⛽, 정비소🔧, 피트스탑🏎️) 표시
     this.world.interactiveZones.forEach(z => {
       const zx = toMapX(z.x);
       const zy = toMapY(z.z);
       ctx.fillStyle = z.color || '#2563EB';
       ctx.beginPath();
-      ctx.arc(zx, zy, 5.5, 0, Math.PI * 2);
+      ctx.arc(zx, zy, 5.0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = 1.2;
       ctx.stroke();
     });
 
-    // 4. 긴급출동 타겟 펄스 링 표시
+    // 4. 외곽 순환 타요 특급열차 실시간 위치 표시
+    if (this.world.expressTrain) {
+      const tx = toMapX(this.world.expressTrain.group.position.x);
+      const ty = toMapY(this.world.expressTrain.group.position.z);
+      ctx.fillStyle = '#2563EB';
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // 5. 긴급출동 타겟 펄스 링 표시
     if (this.activeDispatch) {
       const dx = toMapX(this.activeDispatch.targetX);
       const dy = toMapY(this.activeDispatch.targetZ);
@@ -845,7 +1112,7 @@ export class TayoGame {
       ctx.stroke();
     }
 
-    // 5. 버스 정류장 & 현재 승객 목적지 표시
+    // 6. 버스 정류장 & 현재 승객 목적지 표시
     this.world.busStops.forEach(s => {
       const mx = toMapX(s.x);
       const my = toMapY(s.z);
@@ -860,17 +1127,17 @@ export class TayoGame {
 
         ctx.fillStyle = '#EAB308';
         ctx.beginPath();
-        ctx.arc(mx, my, 4.8, 0, Math.PI * 2);
+        ctx.arc(mx, my, 4.5, 0, Math.PI * 2);
         ctx.fill();
       } else {
         ctx.fillStyle = s.hasPassenger ? '#16A34A' : '#94A3B8';
         ctx.beginPath();
-        ctx.arc(mx, my, 3.0, 0, Math.PI * 2);
+        ctx.arc(mx, my, 2.8, 0, Math.PI * 2);
         ctx.fill();
       }
     });
 
-    // 6. NPC 차량 (페라리 F1, 메르세데스 F1, 경찰차, 소방차, 구급차, 시티카) 실시간 마커
+    // 7. NPC 차량 (페라리 F1, 메르세데스 F1, 경찰차, 소방차, 구급차, 시티카) 실시간 마커
     this.world.npcVehicles.forEach(npc => {
       const nx = toMapX(npc.mesh.position.x);
       const ny = toMapY(npc.mesh.position.z);
@@ -888,11 +1155,11 @@ export class TayoGame {
         ctx.fillStyle = '#F59E0B';
       }
       ctx.beginPath();
-      ctx.arc(nx, ny, npc.isF1 ? 4.0 : 3.0, 0, Math.PI * 2);
+      ctx.arc(nx, ny, npc.isF1 ? 3.8 : 2.8, 0, Math.PI * 2);
       ctx.fill();
     });
 
-    // 7. 플레이어 차량 위치 및 방향 화살표
+    // 8. 플레이어 차량 위치 및 방향 화살표
     const px = toMapX(busPos.x);
     const py = toMapY(busPos.z);
 
@@ -1053,7 +1320,10 @@ export class TayoGame {
       const traffic = this.world.updateTrafficLights(this.totalTime);
       this.checkTrafficRules(traffic, busPos, euler.y);
 
-      // 6. 월드 동적 요소 (분수대, 불꽃, 보행자, F1 레이싱카, 경찰서/소방서/병원) 업데이트
+      // 5-2. 주유소·정비소·세차장·차고지·F1 피트스탑 실시간 작업 게이지 업데이트
+      this.updateFacilityInteraction(frameDelta, busPos, speedKmh);
+
+      // 6. 월드 동적 요소 (분수대, 불꽃, 보행자, F1 레이싱카, 특급열차, 요트, 등대, 날씨) 업데이트
       const worldEvents = this.world.updateWorldElements(
         frameDelta,
         busPos,
@@ -1081,20 +1351,7 @@ export class TayoGame {
 
       if (worldEvents.triggeredZone) {
         const z = worldEvents.triggeredZone;
-        if (z.type === 'carwash') {
-          soundManager.playCarWash();
-          soundManager.speak('보글보글 쏴아! 세차장에서 깨끗하게 목욕했어요!');
-          this.addStar('🫧 보글보글 세차장에서 반짝반짝 깨끗해졌어요!', 1);
-          this.visualBus.setExpression('happy', 3.0);
-        } else if (z.type === 'station') {
-          soundManager.playCelebration();
-          soundManager.speak('에너지 충전 완료! 힘이 불끈불끈 솟아요!');
-          this.addStar('⚡ 충전소에서 에너지를 가득 채웠어요!', 1);
-          this.visualBus.setExpression('happy', 3.0);
-        } else if (z.type === 'garage') {
-          soundManager.playDoor();
-          this.showPopup('🏠 꼬마버스 차고지 문이 열렸어요! 반가워요!');
-        } else if (z.type === 'police_station') {
+        if (z.type === 'police_station') {
           soundManager.playSiren('police');
           soundManager.speak('충성! 일일이 용감한 경찰서에 도착했어요! 우리 동네 안전 이상 무!');
           this.addStar('🚓 112 경찰서 안전 순찰 본부 방문 완료!', 2);
@@ -1158,8 +1415,12 @@ export class TayoGame {
       soundManager.updateEngine(speedKmh / 35.0);
     }
 
-    // 11. 3D 렌더링
-    this.renderer.render(this.scene, this.camera);
+    // 11. 3D 렌더링 (고품질 모드일 때 SOTA EffectComposer + UnrealBloomPass, 저사양일 때 직접 렌더)
+    if (!this.isLowSpecMode && this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
 
     // 12. 성능 지표 갱신
     this.frameCount++;

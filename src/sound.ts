@@ -513,7 +513,131 @@ export class SoundManager {
       osc.stop(t + 0.4);
     });
   }
+
+  // 🎹 도레미 무지개 실로폰/피아노 맑은 종소리 합성음
+  public playXylophoneNote(freq: number, duration: number = 0.55): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const oscFund = this.ctx.createOscillator();
+    const oscHarm = this.ctx.createOscillator();
+    const gainFund = this.ctx.createGain();
+    const gainHarm = this.ctx.createGain();
+
+    oscFund.type = 'sine';
+    oscHarm.type = 'triangle';
+    oscFund.frequency.setValueAtTime(freq, now);
+    oscHarm.frequency.setValueAtTime(freq * 3.0, now); // 실로폰 특유의 배음
+
+    gainFund.gain.setValueAtTime(0.28, now);
+    gainFund.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    gainHarm.gain.setValueAtTime(0.09, now);
+    gainHarm.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.35);
+
+    oscFund.connect(gainFund);
+    oscHarm.connect(gainHarm);
+    gainFund.connect(this.ctx.destination);
+    gainHarm.connect(this.ctx.destination);
+
+    oscFund.start(now);
+    oscHarm.start(now);
+    oscFund.stop(now + duration);
+    oscHarm.stop(now + duration * 0.36);
+  }
+
+  // ⛽ 주유소 꿀꺽꿀꺽 주유 & 초고속 충전 사운드
+  public playRefuelGlug(stepRatio: number = 0.5): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    const baseFreq = 260 + stepRatio * 460;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, now + 0.09);
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.11);
+  }
+
+  // 🔧 정비소 임팩트 렌치 위이잉-철컥! 사운드
+  public playRepairWrench(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    for (let i = 0; i < 4; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const t = now + i * 0.09;
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(520 + i * 95, t);
+      osc.frequency.exponentialRampToValueAtTime(980 + i * 110, t + 0.07);
+
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.005, t + 0.08);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.08);
+    }
+  }
+
+  // 📞 긴급출동 119 / 112 전화기 버튼 DTMF 다이얼 사운드
+  public playDialTone(digit: number): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+
+    const now = this.ctx.currentTime;
+    const dtmfMap: Record<number, [number, number]> = {
+      1: [697, 1209],
+      2: [697, 1336],
+      3: [697, 1477],
+      4: [770, 1209],
+      5: [770, 1336],
+      6: [770, 1477],
+      7: [852, 1209],
+      8: [852, 1336],
+      9: [852, 1477],
+      0: [941, 1336]
+    };
+    const [f1, f2] = dtmfMap[digit] || [697, 1209];
+
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(f1, now);
+    osc2.frequency.setValueAtTime(f2, now);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.16);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.17);
+    osc2.stop(now + 0.17);
+  }
 }
 
 export const soundManager = new SoundManager();
+
 

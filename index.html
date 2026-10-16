@@ -34,6 +34,11 @@
                 <span>낮</span>
             </div>
 
+            <div class="hud-pill" id="btn-weather" title="맑음 / 무지개 소나기 / 벚꽃비 날씨 바꾸기 (단축키: V)">
+                <span>☀️</span>
+                <span>맑음</span>
+            </div>
+
             <div class="hud-pill" id="btn-bgm" title="배경음악 켜기/끄기 (단축키: M)">
                 <span>🎵</span>
                 <span>음악 ON</span>
@@ -65,15 +70,28 @@
         🚏 승객을 찾고 있어요...
     </div>
 
-    <!-- 우측 상단 미니맵 레이더 (실제 도로망·로터리·커브길·F1·긴급차량 100% 실시간 동기화) -->
+    <!-- 🛠️ 실시간 상호작용 시설 작업 게이지 HUD (주유소·정비소·세차장·차고지·F1 피트스탑) -->
+    <div id="facility-action-hud" class="hidden">
+        <div class="facility-hud-header">
+            <span id="facility-hud-icon">⛽</span>
+            <span id="facility-hud-title">싱싱 주유소 급유 중...</span>
+            <strong id="facility-hud-pct">0%</strong>
+        </div>
+        <div class="facility-hud-bar-bg">
+            <div id="facility-hud-bar-fill"></div>
+        </div>
+        <div id="facility-hud-desc">잠시 멈춰 있으면 자동으로 완료돼요!</div>
+    </div>
+
+    <!-- 우측 상단 미니맵 레이더 (실제 도로망·로터리·커브길·해변·F1·긴급차량 100% 실시간 동기화) -->
     <div id="minimap-container">
-        <canvas id="minimap-canvas" width="180" height="180"></canvas>
+        <canvas id="minimap-canvas" width="188" height="188"></canvas>
         <div class="minimap-legend">
             <span>🔵 나</span>
             <span>🟢 승객</span>
             <span>🔴 목적지</span>
-            <span>🏎️ F1</span>
-            <span>🚒🚔🚑</span>
+            <span>⛽🔧🫧</span>
+            <span>🏖️ 해변</span>
         </div>
     </div>
 
@@ -120,7 +138,7 @@
 
     <!-- PC 조작 안내 (키보드 힌트) -->
     <div id="key-guide">
-        ⌨️ <strong>조작:</strong> 방향키/WASD | 스페이스: 빵빵! | F: 사이렌·물대포 | Q: 긴급출동 | E: 놀이교실 | T: 낮/밤 | C: 시점(5종)
+        ⌨️ <strong>조작:</strong> 방향키/WASD | Space: 빵빵! | F: 사이렌·물대포 | Q: 긴급출동 | E: 놀이교실 | T: 시간 | V: 날씨/무지개 | C: 시점(5종)
     </div>
 
     <!-- 하단 온스크린 터치/마우스 컨트롤 버튼 (어린이용 대형 버튼) -->
@@ -204,7 +222,7 @@
         </div>
     </div>
 
-    <!-- 4세 맞춤 한글 / 숫자 / 영어 / 안전상식 학습 모달 팝업 -->
+    <!-- 4세 맞춤 한글 / 숫자 / 영어 / 안전상식 / 음악교실 AI 스마트 모달 팝업 -->
     <div id="edu-modal" class="modal-overlay hidden">
         <div class="modal-content edu-modal-card">
             <div class="edu-header">
@@ -214,7 +232,8 @@
                     <button class="edu-tab-btn" data-cat="hangul">🇰🇷 한글놀이</button>
                     <button class="edu-tab-btn" data-cat="number">🔢 숫자놀이</button>
                     <button class="edu-tab-btn" data-cat="english">🔤 영어놀이</button>
-                    <button class="edu-tab-btn" data-cat="safety">🚦 안전·상식</button>
+                    <button class="edu-tab-btn" data-cat="safety">🚦 119·안전</button>
+                    <button class="edu-tab-btn" data-cat="music">🎹 음악교실</button>
                 </div>
             </div>
 

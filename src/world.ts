@@ -9,7 +9,8 @@ import {
   NpcVehicle,
   NpcVehicleKind,
   PedestrianWalker,
-  TrafficLightData
+  TrafficLightData,
+  WeatherType
 } from './types';
 
 export class WorldManager {
@@ -28,8 +29,20 @@ export class WorldManager {
   private carWashBrushes: THREE.Object3D[] = [];
   private carWashBubbles: THREE.Mesh[] = [];
   private garageDoors: THREE.Mesh[] = [];
+  private garageBayLights: THREE.PointLight[] = [];
+  private repairLiftPlatform: THREE.Group | null = null;
+  private repairRobotArms: THREE.Object3D[] = [];
+  private chargingEnergyRings: THREE.Mesh[] = [];
   private ferrisWheel: THREE.Group | null = null;
+  private carouselGroup: THREE.Group | null = null;
   private windmillBlades: THREE.Group | null = null;
+  private lighthouseBeam: THREE.Group | null = null;
+  private hotAirBalloons: { group: THREE.Group; baseY: number; phase: number; speed: number; radius: number; cx: number; cz: number }[] = [];
+  private yachts: { group: THREE.Group; baseX: number; baseZ: number; phase: number }[] = [];
+  public expressTrain: { group: THREE.Group; angle: number; wheels: THREE.Object3D[] } | null = null;
+  private rainbowGroup: THREE.Group | null = null;
+  private weatherParticles: THREE.Points | null = null;
+  public currentWeather: WeatherType = 'clear';
   private streetLampBulbs: THREE.MeshBasicMaterial[] = [];
   private streetLampGroundGlows: THREE.Mesh[] = [];
   private fountainDrops: THREE.Mesh[] = [];
@@ -324,8 +337,8 @@ export class WorldManager {
   }
 
   public generate(): void {
-    // 1. 광활한 상업용 오픈월드 잔디 지면 (520m x 520m)
-    const groundSize = 520;
+    // 1. 광활한 상업용 메트로폴리스 오픈월드 지면 (820m x 820m)
+    const groundSize = 820;
     const groundGeom = new THREE.PlaneGeometry(groundSize, groundSize);
     const groundMat = new THREE.MeshStandardMaterial({ color: 0x689F38, roughness: 0.92 });
     const ground = new THREE.Mesh(groundGeom, groundMat);
@@ -336,28 +349,35 @@ export class WorldManager {
     this.physics.addGround(groundSize, groundSize);
 
     // 맵 외곽 안전 울타리
-    const wallHalf = groundSize / 2 - 6;
+    const wallHalf = groundSize / 2 - 12;
     this.physics.addBoxCollider(0, 3, wallHalf, wallHalf, 3, 1);
     this.physics.addBoxCollider(0, 3, -wallHalf, wallHalf, 3, 1);
     this.physics.addBoxCollider(wallHalf, 3, 0, 1, 3, wallHalf);
     this.physics.addBoxCollider(-wallHalf, 3, 0, 1, 3, wallHalf);
 
-    // 2. 모듈형 진짜 도로망 구축 (단순 타일 겹침 ZERO! 중앙 로터리 + 사거리 + 삼거리 + 외곽 곡선 커브 서킷 + 미니맵 100% 동기화)
+    // 2. 모듈형 진짜 도로망 구축 (단순 타일 겹침 ZERO! 중앙 로터리 + 사거리 + 삼거리 + 외곽 곡선 커브 서킷 + 남쪽 해안대로 + 미니맵 100% 동기화)
     this.buildRoads();
 
-    // 3. 무지개 언덕 전망대 & 경사로 구축
+    // 3. 무지개 스카이 브릿지 전망대 & 경사로 구축 (도로를 침범하지 않는 전용 공원 블록!)
     this.buildTestRamp();
 
-    // 4. 인터랙티브 시설 6종 (타요 차고지, 보글보글 세차장, 에너지 충전소 + 경찰서, 소방서, 병원!)
-    this.buildTayoGarage(-30, 30);
-    this.buildCarWash(84, 54);
-    this.buildChargingStation(-84, -54);
-    this.buildPoliceStation(-84, 28);
-    this.buildFireStation(-84, 86);
-    this.buildHospital(84, -28);
+    // 4. 인터랙티브 시설 8종 (모두 도로 위가 아닌 전용 부지 + 아스팔트 진입로 완비!)
+    this.buildTayoGarage(-28, 28);         // 🏠 꼬마버스 차고지 (문 열리면 차고 내부로 실제 입차 가능!)
+    this.buildCarWash(88, 30);             // 🫧 보글보글 자동 세차장 (도로 옆 전용 드라이브스루 부지!)
+    this.buildChargingStation(-88, -30);   // ⛽ 싱싱 주유소 & 초고속 충전소 (도로 옆 전용 주유 타운 부지!)
+    this.buildRepairShop(-30, 86);         // 🔧 하나 누나의 척척 정비소 (유압 리프트 & 로봇 렌치 튜닝!)
+    this.buildF1PitStop(28, -158);         // 🏎️ F1 그랑프리 피트스탑 (북쪽 서킷 전용 피트레인!)
+    this.buildPoliceStation(-88, 28);      // 🚓 112 용감한 경찰서
+    this.buildFireStation(-88, 86);        // 🚒 119 용감한 소방서 & 화재 진압 타워
+    this.buildHospital(88, -28);           // 🏥 튼튼 어린이 종합병원
 
-    // 5. 디테일한 3D 랜드마크 건물들 & 대관람차/풍차
+    // 5. 다채로운 도시 테마 지구 (다운타운 마천루, 남쪽 에메랄드 해변 & 마리나 항구 & 등대, 놀이공원 회전목마, 하늘 열기구, 외곽 순환 기차)
     this.buildLandmarksAndBuildings();
+    this.buildDowntownSkyscrapers();
+    this.buildBeachAndHarborDistrict();
+    this.buildThemeParkCarouselAndBalloons();
+    this.buildExpressTrainSystem();
+    this.buildWeatherAndRainbowSystem();
 
     // 6. 자연 환경 (입체 나무, 구름, 야간 자동 점등 가로등)
     this.buildNatureAndStreetlights();
@@ -639,38 +659,83 @@ export class WorldManager {
     addCurvedHighwayCorner(-outerStraightLimit, -outerStraightLimit, Math.PI * 0.5, Math.PI);
     // 북동쪽 코너 (+98, -98): theta: 0 ~ 0.5*PI
     addCurvedHighwayCorner(outerStraightLimit, -outerStraightLimit, 0, Math.PI * 0.5);
+
+    // 8. 🏖️ 남쪽 에메랄드 해안대로 (Coastal Boulevard, z = 184m) 연결 도로망
+    const RBeach = 184;
+    [-R1, 0, R1].forEach(lx => {
+      addIntersectionNode(lx, RBeach);
+      addStraightSegment(lx, R2 + halfW, lx, RBeach - halfW);
+    });
+    addStraightSegment(-R1 + halfW, RBeach, -halfW, RBeach);
+    addStraightSegment(halfW, RBeach, R1 - halfW, RBeach);
+    addStraightSegment(-92, RBeach, -R1 - halfW, RBeach);
+    addStraightSegment(R1 + halfW, RBeach, 92, RBeach);
   }
 
   /**
-   * 1. 타요 4총사 아치형 차고지 (가까이 가면 문이 스르륵 열리는 인터랙티브 존!)
+   * 도로에서 각 시설 부지로 자연스럽게 이어지는 아스팔트 진입로(Driveway Apron) 생성 헬퍼
+   */
+  private addDrivewayApron(cx: number, cz: number, w: number, d: number, colorHex: number = 0x334155): void {
+    const apron = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, d),
+      new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.85,
+        polygonOffset: true,
+        polygonOffsetFactor: -1
+      })
+    );
+    apron.rotation.x = -Math.PI / 2;
+    apron.position.set(cx, 0.021, cz);
+    apron.receiveShadow = true;
+    this.scene.add(apron);
+  }
+
+  /**
+   * 🏠 1. 타요 4총사 아치형 차고지 (문 열리면 차고 안으로 직접 들어갈 수 있는 진짜 내부 공간 구현!)
    */
   private buildTayoGarage(x: number, z: number): void {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
-    const width = 20;
-    const depth = 11;
-    const height = 6.2;
+    const width = 24;
+    const depth = 12;
+    const height = 6.6;
 
-    // 차고지 앞마당 콘크리트 바닥
-    const yard = new THREE.Mesh(
-      new THREE.PlaneGeometry(24, 18),
-      new THREE.MeshStandardMaterial({ color: 0x94A3B8, roughness: 0.85 })
-    );
-    yard.rotation.x = -Math.PI / 2;
-    yard.position.set(0, 0.015, 3);
-    yard.receiveShadow = true;
-    group.add(yard);
+    // 남쪽 대로(z=54)와 이어지는 넓은 진입 마당 & 차고 내부 에폭시 바닥
+    this.addDrivewayApron(x, z + 13, 24, 16, 0x475569);
 
-    // 본체 건물
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(width, height, depth),
-      new THREE.MeshStandardMaterial({ color: 0xFFFBEB, roughness: 0.5 })
+    const interiorFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(width - 0.6, depth - 0.6),
+      new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.4, metalness: 0.1 })
     );
-    body.position.y = height / 2;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    group.add(body);
+    interiorFloor.rotation.x = -Math.PI / 2;
+    interiorFloor.position.set(0, 0.03, 0);
+    interiorFloor.receiveShadow = true;
+    group.add(interiorFloor);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xFFFBEB, roughness: 0.5 });
+
+    // 차고 뒷벽 (Back Wall)
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.8), wallMat);
+    backWall.position.set(0, height / 2, -depth / 2 + 0.4);
+    backWall.castShadow = true;
+    backWall.receiveShadow = true;
+    group.add(backWall);
+
+    // 차고 좌/우 외벽 (Side Walls)
+    [-width / 2 + 0.4, width / 2 - 0.4].forEach(wx => {
+      const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, height, depth), wallMat);
+      sideWall.position.set(wx, height / 2, 0);
+      sideWall.castShadow = true;
+      sideWall.receiveShadow = true;
+      group.add(sideWall);
+    });
+
+    // 정면 상단 인방보(Lintel: 셔터 도어 위쪽 외벽)
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(width, 2.1, 0.9), wallMat);
+    lintel.position.set(0, height - 1.05, depth / 2 - 0.35);
+    group.add(lintel);
 
     // 파란색 둥근 아치형 지붕
     const roofGeom = new THREE.CylinderGeometry(depth * 0.55, depth * 0.55, width + 0.8, 20, 1, false, 0, Math.PI);
@@ -682,119 +747,160 @@ export class WorldManager {
     roof.castShadow = true;
     group.add(roof);
 
-    // 4개의 베이 (120 타요, 1000 로기, 02 라니, 1339 가니) + 개폐형 셔터 도어
+    // 4개의 베이 (120 타요, 1000 로기, 02 라니, 1339 가니) + 내부 조명 + 공구함 + 개폐형 셔터 도어
     const bays = [
-      { num: '120', color: '#0080EE', xOffset: -6.9 },
-      { num: '1000', color: '#46B81D', xOffset: -2.3 },
-      { num: '02', color: '#FFCC00', xOffset: 2.3 },
-      { num: '1339', color: '#E22B24', xOffset: 6.9 }
+      { num: '120', color: '#0080EE', xOffset: -8.2 },
+      { num: '1000', color: '#46B81D', xOffset: -2.75 },
+      { num: '02', color: '#FFCC00', xOffset: 2.75 },
+      { num: '1339', color: '#E22B24', xOffset: 8.2 }
     ];
 
-    bays.forEach(bay => {
-      // 안쪽 어두운 차고 내부 공간 표현
-      const interior = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.8, 4.2),
-        new THREE.MeshBasicMaterial({ color: 0x1E293B })
-      );
-      interior.position.set(bay.xOffset, 2.1, depth / 2 + 0.02);
-      group.add(interior);
+    // 베이 사이 얇은 전면 기둥
+    [-5.48, 0, 5.48].forEach(px => {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.55, height, 0.9), wallMat);
+      pillar.position.set(px, height / 2, depth / 2 - 0.35);
+      group.add(pillar);
+    });
 
-      // 슬라이딩 차고 문
-      const door = new THREE.Mesh(
-        new THREE.BoxGeometry(3.7, 4.1, 0.12),
-        new THREE.MeshStandardMaterial({ color: new THREE.Color(bay.color), roughness: 0.35 })
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xFACC15 });
+
+    bays.forEach(bay => {
+      // 베이 내부 바닥 노란색 주차 스토퍼 & 가이드 라인
+      [-2.1, 2.1].forEach(lx => {
+        const pLine = new THREE.Mesh(new THREE.PlaneGeometry(0.18, depth - 2.2), lineMat);
+        pLine.rotation.x = -Math.PI / 2;
+        pLine.position.set(bay.xOffset + lx, 0.04, 0.2);
+        group.add(pLine);
+      });
+
+      // 베이 안쪽 뒷벽 빨간 공구 캐비닛 & 정비 보드
+      const cabinet = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 2.2, 0.7),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(bay.color), roughness: 0.3, metalness: 0.3 })
       );
-      door.position.set(bay.xOffset, 2.1, depth / 2 + 0.08);
+      cabinet.position.set(bay.xOffset, 1.1, -depth / 2 + 1.1);
+      group.add(cabinet);
+
+      // 베이 천장 따뜻한 포인트 라이트
+      const bayLight = new THREE.PointLight(0xFFFBEB, 1.2, 12);
+      bayLight.position.set(bay.xOffset, height - 0.6, 0);
+      group.add(bayLight);
+      this.garageBayLights.push(bayLight);
+
+      // 슬라이딩 차고 셔터 도어 (가까이 오면 위로 스르륵 열려서 안으로 진입 가능!)
+      const door = new THREE.Mesh(
+        new THREE.BoxGeometry(4.75, 4.4, 0.14),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(bay.color), roughness: 0.32, metalness: 0.15 })
+      );
+      door.position.set(bay.xOffset, 2.2, depth / 2 - 0.25);
       group.add(door);
       this.garageDoors.push(door);
 
       // 노선 번호 뱃지 간판
       const sign = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.2, 0.9),
+        new THREE.PlaneGeometry(3.8, 1.05),
         new THREE.MeshBasicMaterial({ map: this.createSignBannerTexture(bay.num, bay.color) })
       );
-      sign.position.set(bay.xOffset, 4.9, depth / 2 + 0.12);
+      sign.position.set(bay.xOffset, 5.25, depth / 2 + 0.16);
       group.add(sign);
     });
 
     // 상단 대형 간판
     const mainBanner = new THREE.Mesh(
-      new THREE.PlaneGeometry(11, 2.2),
-      new THREE.MeshBasicMaterial({ map: this.createSignBannerTexture('🚌 꼬마버스 차고지', '#0284C7') })
+      new THREE.PlaneGeometry(13.5, 2.4),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture('🏠 꼬마버스 차고지 (안으로 들어오세요!)', '#0284C7'),
+        side: THREE.DoubleSide
+      })
     );
-    mainBanner.position.set(0, height + 2.2, depth / 2);
+    mainBanner.position.set(0, height + 2.5, depth / 2 - 0.2);
     group.add(mainBanner);
 
     this.scene.add(group);
-    this.physics.addBoxCollider(x, height / 2, z, width / 2, height / 2, depth / 2);
+
+    // ⚠️ 물리 콜라이더: 뒷벽과 좌우 외벽에만 콜라이더를 두어 문이 열리면 차고 내부로 실제 운전해 들어갈 수 있음!
+    this.physics.addBoxCollider(x, height / 2, z - depth / 2 + 0.4, width / 2, height / 2, 0.5);
+    this.physics.addBoxCollider(x - width / 2 + 0.4, height / 2, z, 0.5, height / 2, depth / 2);
+    this.physics.addBoxCollider(x + width / 2 - 0.4, height / 2, z, 0.5, height / 2, depth / 2);
 
     this.interactiveZones.push({
       id: 'garage',
       name: '꼬마버스 차고지',
-      icon: '🚌',
+      icon: '🏠',
       color: '#0284C7',
       type: 'garage',
       x: x,
-      z: z + 8,
-      radius: 9.0,
+      z: z + 1.0, // 차고 내부 깊숙이 들어왔을 때 반응!
+      radius: 7.5,
       cooldown: 0,
       group
     });
   }
 
   /**
-   * 2. 보글보글 자동 세차장 (회전하는 대형 브러쉬 2개 + 비눗방울 파티클!)
+   * 🫧 2. 보글보글 자동 세차장 (도로 위가 아닌 전용 부지 + 남북 진입로 + 회전 브러쉬 2쌍 + 물줄기 아치!)
    */
   private buildCarWash(x: number, z: number): void {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
+    // 남쪽 도로(z=54) 및 북쪽 도로(z=0) 방향과 연결되는 전용 드라이브스루 아스팔트 진입로
+    this.addDrivewayApron(x, z, 14, 38, 0x334155);
+
     // 파란색 방수 바닥 패드
     const pad = new THREE.Mesh(
-      new THREE.PlaneGeometry(12, 16),
-      new THREE.MeshStandardMaterial({ color: 0x38BDF8, roughness: 0.3 })
+      new THREE.PlaneGeometry(12, 18),
+      new THREE.MeshStandardMaterial({ color: 0x0284C7, roughness: 0.25, metalness: 0.15 })
     );
     pad.rotation.x = -Math.PI / 2;
-    pad.position.y = 0.03;
+    pad.position.y = 0.032;
     group.add(pad);
 
-    // 양쪽 세차 터널 벽 기둥 (통과 가능하도록 좌우로만 콜라이더 배치)
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0xE0F2FE, roughness: 0.3 });
-    [-4.2, 4.2].forEach(wx => {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 5.2, 10), wallMat);
-      wall.position.set(wx, 2.6, 0);
+    // 양쪽 세차 터널 유리/메탈 벽 기둥 (통과 가능하도록 좌우로만 콜라이더 배치)
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xE0F2FE, roughness: 0.2, metalness: 0.2 });
+    [-4.5, 4.5].forEach(wx => {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.5, 11.5), wallMat);
+      wall.position.set(wx, 2.75, 0);
       wall.castShadow = true;
       group.add(wall);
-      this.physics.addBoxCollider(x + wx, 2.6, z, 0.4, 2.6, 5.0);
+      this.physics.addBoxCollider(x + wx, 2.75, z, 0.45, 2.75, 5.75);
     });
 
     // 상단 세차장 아치 지붕 & 간판
     const roof = new THREE.Mesh(
-      new THREE.BoxGeometry(9.6, 0.9, 10.4),
-      new THREE.MeshStandardMaterial({ color: 0x0284C7, roughness: 0.3 })
+      new THREE.BoxGeometry(10.2, 0.95, 12.0),
+      new THREE.MeshStandardMaterial({ color: 0x0369A1, roughness: 0.3 })
     );
-    roof.position.set(0, 5.4, 0);
+    roof.position.set(0, 5.6, 0);
     group.add(roof);
 
     const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(8.5, 1.8),
-      new THREE.MeshBasicMaterial({ map: this.createSignBannerTexture('🫧 보글보글 세차장', '#0284C7') })
+      new THREE.PlaneGeometry(9.2, 1.9),
+      new THREE.MeshBasicMaterial({ map: this.createSignBannerTexture('🫧 보글보글 자동 세차장', '#0284C7') })
     );
-    sign.position.set(0, 6.7, 5.3);
+    sign.position.set(0, 6.9, 6.1);
     group.add(sign);
 
     const signBack = sign.clone();
-    signBack.position.z = -5.3;
+    signBack.position.z = -6.1;
     signBack.rotation.y = Math.PI;
     group.add(signBack);
 
-    // 회전하는 대형 3D 스펀지 브러쉬 롤러 2쌍
-    const brushMat1 = new THREE.MeshStandardMaterial({ color: 0x00B0FF, roughness: 0.6 });
-    const brushMat2 = new THREE.MeshStandardMaterial({ color: 0xFFD600, roughness: 0.6 });
-    [-2.8, 2.8].forEach((bx, idx) => {
+    // 회전하는 대형 3D 스펀지 브러쉬 롤러 4개 (좌우 2쌍)
+    const brushMat1 = new THREE.MeshStandardMaterial({ color: 0x00B0FF, roughness: 0.5 });
+    const brushMat2 = new THREE.MeshStandardMaterial({ color: 0xFFD600, roughness: 0.5 });
+    [
+      [-3.0, -2.5],
+      [3.0, -2.5],
+      [-3.0, 2.5],
+      [3.0, 2.5]
+    ].forEach(([bx, bz], idx) => {
       const brushGroup = new THREE.Group();
-      brushGroup.position.set(bx, 2.3, 0);
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 4.0, 12), idx === 0 ? brushMat1 : brushMat2);
+      brushGroup.position.set(bx, 2.4, bz);
+      const cyl = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.05, 1.05, 4.3, 14),
+        idx % 2 === 0 ? brushMat1 : brushMat2
+      );
       brushGroup.add(cyl);
       group.add(brushGroup);
       this.carWashBrushes.push(brushGroup);
@@ -804,12 +910,13 @@ export class WorldManager {
     const bubbleMat = new THREE.MeshStandardMaterial({
       color: 0xFFFFFF,
       transparent: true,
-      opacity: 0.75,
-      roughness: 0.1
+      opacity: 0.78,
+      roughness: 0.08,
+      metalness: 0.1
     });
-    for (let i = 0; i < 18; i++) {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.22 + Math.random() * 0.25, 12, 12), bubbleMat);
-      b.position.set((Math.random() - 0.5) * 6, 0.8 + Math.random() * 3.8, (Math.random() - 0.5) * 8);
+    for (let i = 0; i < 22; i++) {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.24 + Math.random() * 0.28, 12, 12), bubbleMat);
+      b.position.set((Math.random() - 0.5) * 6.4, 0.8 + Math.random() * 4.0, (Math.random() - 0.5) * 9.5);
       group.add(b);
       this.carWashBubbles.push(b);
     }
@@ -824,71 +931,297 @@ export class WorldManager {
       type: 'carwash',
       x,
       z,
-      radius: 5.5,
+      radius: 6.2,
       cooldown: 0,
       group
     });
   }
 
   /**
-   * 3. 에너지 쑥쑥 충전소 / 주유소 (드라이브 스루 충전 패드!)
+   * ⛽ 3. 싱싱 주유소 & 초고속 충전소 (도로 밖 전용 서비스 타운 부지 + 주유기 & 초고속 충전기 + 에너지 링!)
    */
   private buildChargingStation(x: number, z: number): void {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
-    // 초록/노란 충전 패드 바닥
+    // 도로(z=-54 및 z=0)와 부드럽게 연결되는 전용 주유소 진입로
+    this.addDrivewayApron(x, z, 18, 38, 0x334155);
+
+    // 에메랄드 그린 & 옐로우 주유/충전 아일랜드 패드 바닥
     const pad = new THREE.Mesh(
-      new THREE.PlaneGeometry(14, 14),
-      new THREE.MeshStandardMaterial({ color: 0x4ADE80, roughness: 0.5 })
+      new THREE.PlaneGeometry(16, 18),
+      new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.45 })
     );
     pad.rotation.x = -Math.PI / 2;
-    pad.position.y = 0.03;
+    pad.position.y = 0.032;
     group.add(pad);
 
-    // 캐노피 기둥 2개 (우측에 배치해 좌측으로 차가 통과)
-    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC });
-    [-3.5, 3.5].forEach(pz => {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 5.4, 12), pillarMat);
-      pillar.position.set(3.8, 2.7, pz);
+    // 주유소 아일랜드 연석 및 주유기/충전기 기둥 (우측 아일랜드에 배치해 좌측 주유 레인으로 통과)
+    const island = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.25, 12.5),
+      new THREE.MeshStandardMaterial({ color: 0xE2E8F0, roughness: 0.6 })
+    );
+    island.position.set(4.2, 0.13, 0);
+    group.add(island);
+
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, metalness: 0.3, roughness: 0.3 });
+    [-4.2, 4.2].forEach(pz => {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 5.8, 12), pillarMat);
+      pillar.position.set(4.2, 2.9, pz);
       group.add(pillar);
     });
-    this.physics.addBoxCollider(x + 3.8, 2.5, z, 1.0, 2.5, 4.2);
+    this.physics.addBoxCollider(x + 4.2, 2.6, z, 1.3, 2.6, 6.2);
 
-    // 주유기 / 전기 충전기 2대
-    const pumpMat = new THREE.MeshStandardMaterial({ color: 0x10B981, roughness: 0.3 });
-    [-1.6, 1.6].forEach(pz => {
-      const pump = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.2, 0.9), pumpMat);
-      pump.position.set(3.8, 1.1, pz);
+    // ⛽ 노란/빨간 주유기 2대 + ⚡ 민트 초고속 전기 충전기 1대
+    const gasPumpMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, roughness: 0.25, metalness: 0.2 });
+    const evPumpMat = new THREE.MeshStandardMaterial({ color: 0x10B981, roughness: 0.25, metalness: 0.3 });
+    const screenMat = new THREE.MeshBasicMaterial({ color: 0x38BDF8 });
+
+    [-2.6, 0, 2.6].forEach((pz, idx) => {
+      const isEv = idx === 1;
+      const pump = new THREE.Mesh(new THREE.BoxGeometry(1.05, 2.4, 0.95), isEv ? evPumpMat : gasPumpMat);
+      pump.position.set(4.2, 1.35, pz);
       group.add(pump);
+
+      // 계기판 LCD 스크린
+      const lcd = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.45), screenMat);
+      lcd.rotation.y = -Math.PI / 2;
+      lcd.position.set(3.66, 1.75, pz);
+      group.add(lcd);
+
+      // 주유건 노즐 홀더
+      const nozzle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.55, 0.28),
+        new THREE.MeshStandardMaterial({ color: 0xEF4444 })
+      );
+      nozzle.position.set(3.62, 1.15, pz + 0.3);
+      group.add(nozzle);
     });
 
-    // 상단 캐노피 지붕 & 간판
+    // 주유 정차 구역 바닥 홀로그램 에너지 링 (회전 애니메이션)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x34D399,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75
+    });
+    const energyRing = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.1, 32), ringMat);
+    energyRing.rotation.x = -Math.PI / 2;
+    energyRing.position.set(-0.6, 0.06, 0);
+    group.add(energyRing);
+    this.chargingEnergyRings.push(energyRing);
+
+    // 상단 대형 주유소 캐노피 지붕 & 양면 네온 간판
     const canopy = new THREE.Mesh(
-      new THREE.BoxGeometry(9.5, 0.8, 11),
-      new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.3 })
+      new THREE.BoxGeometry(11.5, 0.9, 13.5),
+      new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.28 })
     );
-    canopy.position.set(1.2, 5.4, 0);
+    canopy.position.set(1.0, 5.8, 0);
     group.add(canopy);
 
     const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(8.5, 1.8),
-      new THREE.MeshBasicMaterial({ map: this.createSignBannerTexture('⚡ 싱싱 에너지 충전소', '#059669') })
+      new THREE.PlaneGeometry(10.2, 2.0),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture('⛽ 싱싱 주유소 & ⚡ 초고속 충전소', '#059669'),
+        side: THREE.DoubleSide
+      })
     );
-    sign.position.set(1.2, 6.6, 5.6);
+    sign.position.set(1.0, 7.1, 6.8);
     group.add(sign);
+
+    const signBack = sign.clone();
+    signBack.position.z = -6.8;
+    signBack.rotation.y = Math.PI;
+    group.add(signBack);
 
     this.scene.add(group);
 
     this.interactiveZones.push({
       id: 'station',
-      name: '싱싱 에너지 충전소',
-      icon: '⚡',
+      name: '싱싱 주유소 & 충전소',
+      icon: '⛽',
       color: '#10B981',
       type: 'station',
-      x: x - 0.5,
+      x: x - 0.6,
       z,
-      radius: 5.8,
+      radius: 6.4,
+      cooldown: 0,
+      group
+    });
+  }
+
+  /**
+   * 🔧 3-B. 하나 누나의 척척 정비소 (Hana's Auto Repair & Tuning Shop - 유압 리프트 & 로봇 렌치 암!)
+   */
+  private buildRepairShop(x: number, z: number): void {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    // 도로와 연결되는 정비소 앞마당 진입로
+    this.addDrivewayApron(x, z - 12, 20, 18, 0x334155);
+
+    // 오렌지 & 다크그레이 정비소 패드
+    const pad = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 16),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })
+    );
+    pad.rotation.x = -Math.PI / 2;
+    pad.position.y = 0.03;
+    group.add(pad);
+
+    // 정비소 후면 본관 워크숍 건물
+    const workshop = new THREE.Mesh(
+      new THREE.BoxGeometry(16, 6.4, 6.5),
+      new THREE.MeshStandardMaterial({ color: 0xF97316, roughness: 0.4 })
+    );
+    workshop.position.set(0, 3.2, 5.2);
+    workshop.castShadow = true;
+    workshop.receiveShadow = true;
+    group.add(workshop);
+    this.physics.addBoxCollider(x, 3.2, z + 5.2, 8.0, 3.2, 3.25);
+
+    // 정비 베이 캐노피 지붕 (앞쪽으로 돌출되어 아래에서 차량 정비!)
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(15.5, 0.7, 9.5),
+      new THREE.MeshStandardMaterial({ color: 0xEA580C, roughness: 0.35 })
+    );
+    canopy.position.set(0, 6.1, -1.2);
+    group.add(canopy);
+
+    // 좌우 노란색 H빔 유압 리프트 기둥 2개 (가운데로 차량 진입 가능!)
+    const postMat = new THREE.MeshStandardMaterial({ color: 0xFACC15, metalness: 0.4, roughness: 0.3 });
+    [-4.8, 4.8].forEach(px => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.75, 5.8, 0.75), postMat);
+      post.position.set(px, 2.9, -1.5);
+      group.add(post);
+      this.physics.addBoxCollider(x + px, 2.9, z - 1.5, 0.4, 2.9, 0.4);
+    });
+
+    // 상하로 움직이는 3D 유압 리프트 플랫폼 & 회전하는 로봇 렌치 암 2기
+    const liftGroup = new THREE.Group();
+    liftGroup.position.set(0, 0.08, -1.5);
+    [-1.15, 1.15].forEach(rx => {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.14, 6.2),
+        new THREE.MeshStandardMaterial({ color: 0xFACC15, metalness: 0.5, roughness: 0.3 })
+      );
+      rail.position.set(rx, 0, 0);
+      liftGroup.add(rail);
+    });
+    group.add(liftGroup);
+    this.repairLiftPlatform = liftGroup;
+
+    // 좌우 자동 로봇 정비 암 (차량이 들어오면 윙윙 회전하며 타이어/엔진 튜닝!)
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x38BDF8, metalness: 0.6, roughness: 0.25 });
+    [-3.8, 3.8].forEach(ax => {
+      const armPivot = new THREE.Group();
+      armPivot.position.set(ax, 1.8, -1.5);
+      const armBar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.28, 0.28), armMat);
+      armBar.position.x = ax < 0 ? 0.6 : -0.6;
+      const wrenchHead = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.35, 0.4, 8),
+        new THREE.MeshStandardMaterial({ color: 0xFDE047, metalness: 0.7 })
+      );
+      wrenchHead.rotation.z = Math.PI / 2;
+      wrenchHead.position.x = ax < 0 ? 1.25 : -1.25;
+      armPivot.add(armBar, wrenchHead);
+      group.add(armPivot);
+      this.repairRobotArms.push(armPivot);
+    });
+
+    // 정비소 타이어 랙 데코레이션 (우측 벽면)
+    const tireMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.8 });
+    for (let i = 0; i < 4; i++) {
+      const tire = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.22, 10, 18), tireMat);
+      tire.position.set(-5.8 + i * 1.4, 0.8, 1.6);
+      group.add(tire);
+    }
+
+    // 간판
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(11.5, 2.1),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture('🔧 하나 누나의 척척 정비소', '#EA580C'),
+        side: THREE.DoubleSide
+      })
+    );
+    sign.position.set(0, 7.6, -1.2);
+    group.add(sign);
+
+    this.scene.add(group);
+
+    this.interactiveZones.push({
+      id: 'repair_shop',
+      name: '하나 누나의 척척 정비소',
+      icon: '🔧',
+      color: '#F97316',
+      type: 'repair_shop',
+      x,
+      z: z - 1.5,
+      radius: 6.5,
+      cooldown: 0,
+      group
+    });
+  }
+
+  /**
+   * 🏎️ 3-C. F1 그랑프리 피트스탑 (북쪽 외곽 서킷 옆 드라이브스루 피트레인 & 2.1초 타이어 교체 존!)
+   */
+  private buildF1PitStop(x: number, z: number): void {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    // 외곽 서킷(z=-136)과 연결되는 피트레인 아스팔트
+    this.addDrivewayApron(x, z + 10, 28, 18, 0x1E293B);
+
+    // 피트스탑 본관 개러지 건물 (z - 5 위치에 배치해 앞쪽 피트레인으로 차량 통과!)
+    const garage = new THREE.Mesh(
+      new THREE.BoxGeometry(22, 6.2, 7.5),
+      new THREE.MeshStandardMaterial({ color: 0x0F172A, roughness: 0.35, metalness: 0.3 })
+    );
+    garage.position.set(0, 3.1, -4.5);
+    garage.castShadow = true;
+    group.add(garage);
+    this.physics.addBoxCollider(x, 3.1, z - 4.5, 11.0, 3.1, 3.75);
+
+    // 페라리 레드 & 체커기 스타일 상단 캐노피
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(22.4, 0.85, 11.5),
+      new THREE.MeshStandardMaterial({ color: 0xDC2626, roughness: 0.3 })
+    );
+    canopy.position.set(0, 5.9, -0.5);
+    group.add(canopy);
+
+    // 피트박스 정차 그리드 바닥 마킹 (빨강/흰색 연석)
+    const pitBox = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 5.2),
+      new THREE.MeshBasicMaterial({ color: 0xEF4444, transparent: true, opacity: 0.65 })
+    );
+    pitBox.rotation.x = -Math.PI / 2;
+    pitBox.position.set(0, 0.04, 2.5);
+    group.add(pitBox);
+
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(12.5, 2.1),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture('🏎️ F1 그랑프리 피트스탑 (PIT IN)', '#DC2626'),
+        side: THREE.DoubleSide
+      })
+    );
+    sign.position.set(0, 7.4, 4.8);
+    group.add(sign);
+
+    this.scene.add(group);
+
+    this.interactiveZones.push({
+      id: 'f1_pitstop',
+      name: 'F1 그랑프리 피트스탑',
+      icon: '🏎️',
+      color: '#DC2626',
+      type: 'f1_pitstop',
+      x,
+      z: z + 2.5,
+      radius: 6.8,
       cooldown: 0,
       group
     });
@@ -1082,8 +1415,8 @@ export class WorldManager {
     }
 
     // 소방서 훈련 타워 근처인지 체크하여 불 진압!
-    const fireWorldPos = new THREE.Vector3(-84 + 9.5, 2.0, 86 + 4.5);
-    if (origin.distanceTo(fireWorldPos) < 28 && this.fireIntensity > 0.1) {
+    const fireWorldPos = new THREE.Vector3(-88 + 9.5, 2.0, 86 + 4.5);
+    if (origin.distanceTo(fireWorldPos) < 30 && this.fireIntensity > 0.1) {
       this.fireIntensity = 0; // 즉시 진화 성공!
       return { extinguishedFire: true };
     }
@@ -1178,20 +1511,20 @@ export class WorldManager {
   }
 
   /**
-   * 7. 무지개 언덕 전망대 & 안전 난간 경사로
+   * 7. 무지개 스카이 브릿지 전망대 & 안전 난간 경사로 (도로를 침범하지 않는 전용 공원 블록 x=88, z=-114~-78)
    */
   private buildTestRamp(): void {
-    const rx = 28;
-    const rz = -48;
+    const rx = 88;
+    const rz = -112;
     const rWidth = 9.4;
     const rHeight = 2.6;
-    const rLength = 18.0;
+    const rLength = 16.0;
 
     const angleX = Math.atan2(rHeight, rLength);
     const rampLength = Math.sqrt(rLength * rLength + rHeight * rHeight);
 
     const rampGeom = new THREE.BoxGeometry(rWidth, 0.35, rampLength);
-    const rampMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.7 });
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0x38BDF8, roughness: 0.5 });
     const rampMesh = new THREE.Mesh(rampGeom, rampMat);
     rampMesh.position.set(rx, rHeight / 2, rz);
     rampMesh.rotation.x = angleX;
@@ -1200,28 +1533,28 @@ export class WorldManager {
     this.scene.add(rampMesh);
 
     // 언덕 위 평평한 전망 데크
-    const deckGeom = new THREE.BoxGeometry(rWidth, 0.35, 12.0);
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0xFBBF24, roughness: 0.5 });
+    const deckGeom = new THREE.BoxGeometry(rWidth, 0.35, 11.0);
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0xFBBF24, roughness: 0.4 });
     const deckMesh = new THREE.Mesh(deckGeom, deckMat);
-    deckMesh.position.set(rx, rHeight, rz + rLength / 2 + 6.0);
+    deckMesh.position.set(rx, rHeight, rz + rLength / 2 + 5.5);
     deckMesh.castShadow = true;
     deckMesh.receiveShadow = true;
     this.scene.add(deckMesh);
 
     // 내려가는 반대쪽 경사로 연결 (양방향 통과 가능한 무지개 육교!)
     const downRampMesh = rampMesh.clone();
-    downRampMesh.position.set(rx, rHeight / 2, rz + rLength + 12.0);
+    downRampMesh.position.set(rx, rHeight / 2, rz + rLength + 11.0);
     downRampMesh.rotation.x = -angleX;
     this.scene.add(downRampMesh);
 
     // 물리 콜라이더 등록 (올라가는 경사로 + 상단 데크 + 내려가는 경사로)
     this.physics.addRamp(rx, 0, rz, rWidth, rHeight, rLength, 0);
-    this.physics.addBoxCollider(rx, rHeight, rz + rLength / 2 + 6.0, rWidth / 2, 0.18, 6.0);
-    this.physics.addRamp(rx, 0, rz + rLength + 12.0, rWidth, rHeight, rLength, Math.PI);
+    this.physics.addBoxCollider(rx, rHeight, rz + rLength / 2 + 5.5, rWidth / 2, 0.18, 5.5);
+    this.physics.addRamp(rx, 0, rz + rLength + 11.0, rWidth, rHeight, rLength, Math.PI);
   }
 
   /**
-   * 8. 디테일한 3D 랜드마크 건물들 (유치원, 초등학교, 마트, F1 그랑프리 피트스탑, 대관람차, 풍차 등)
+   * 8. 디테일한 3D 랜드마크 건물들 (유치원, 초등학교, 마트, 그랑프리 메인 관람석, 대관람차, 풍차 등)
    */
   private buildLandmarksAndBuildings(): void {
     const addDetailedBuilding = (
@@ -1247,7 +1580,7 @@ export class WorldManager {
       group.add(base);
 
       // 건물 본체
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.45 });
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.08 });
       const geom = new THREE.BoxGeometry(width, height, depth);
       const mesh = new THREE.Mesh(geom, mat);
       mesh.position.y = height / 2 + 0.4;
@@ -1345,22 +1678,23 @@ export class WorldManager {
       this.physics.addBoxCollider(x, height / 2, z, width / 2, height / 2, depth / 2);
     };
 
-    // 주요 랜드마크 건물 배치
+    // 주요 랜드마크 건물 배치 (모두 도로에서 떨어진 블록 내부!)
     addDetailedBuilding(-28, -28, 16, 11, 7.0, 0xFDE047, 'school', '🏫 꿈나무 초등학교', '#CA8A04');
     addDetailedBuilding(28, -28, 14, 11, 6.2, 0xF9A8D4, 'pitched', '🌈 무지개 유치원', '#DB2777');
     addDetailedBuilding(28, 28, 13, 11, 6.2, 0x7DD3FC, 'mart', '🛒 달콤 마트', '#0284C7');
-    addDetailedBuilding(0, -162, 22, 10, 6.5, 0x1E293B, 'flat', '🏎️ F1 그랑프리 피트스탑', '#DC0000');
+    addDetailedBuilding(-28, -158, 20, 9, 6.5, 0x1E293B, 'flat', '🏆 그랑프리 메인 스타디움', '#0284C7');
 
-    // 외곽 마을 주택 & 타운 단지 (확장된 월드 곳곳에 배치)
+    // 외곽 마을 주택 & 타운 단지 (도로 및 인터랙티브 시설과 절대 겹치지 않는 전용 블록!)
     const houseColors = [0xFDBA74, 0xBEF264, 0x93C5FD, 0xF9A8D4, 0xC4B5FD, 0xFDE047];
     const houseCoords = [
-      { x: -28, z: -84 }, { x: -84, z: -28 },
-      { x: 28, z: 84 }, { x: 84, z: 84 },
-      { x: -28, z: 84 }, { x: 84, z: -84 },
-      { x: -84, z: -84 }, { x: 0, z: 92 },
-      { x: 0, z: -92 }, { x: 162, z: 0 },
-      { x: -162, z: 0 }, { x: 162, z: 54 },
-      { x: -162, z: -54 }, { x: 54, z: 162 }
+      { x: 84, z: 84 },
+      { x: -84, z: -84 },
+      { x: 162, z: 26 },
+      { x: -162, z: 26 },
+      { x: 162, z: 84 },
+      { x: -162, z: -84 },
+      { x: 84, z: 158 },
+      { x: -84, z: 158 }
     ];
     houseCoords.forEach((p, idx) => {
       addDetailedBuilding(p.x, p.z, 8.8, 8.8, 5.2, houseColors[idx % houseColors.length], 'pitched');
@@ -1371,6 +1705,481 @@ export class WorldManager {
 
     // 풍차 마을 대형 풍차 (남서쪽 외곽 랜드마크!)
     this.buildWindmill(-98, -98);
+  }
+
+  /**
+   * 🏙️ 8-A. 센트럴 다운타운 마천루 지구 (유리 커튼월 고층 빌딩, 네온 루프탑 사인, 미래형 AI 연구소!)
+   */
+  private buildDowntownSkyscrapers(): void {
+    const towers = [
+      { x: -28, z: -86, w: 13, d: 13, h: 24, color: 0x0284C7, neon: '#38BDF8', title: '🏙️ TAYO SOTA TOWER' },
+      { x: 28, z: -86, w: 12, d: 12, h: 19, color: 0x6366F1, neon: '#A855F7', title: '🤖 2026 AI 로봇 연구소' },
+      { x: 28, z: 86, w: 13, d: 12, h: 21, color: 0x0EA5E9, neon: '#F43F5E', title: '🎬 키즈 미디어 방송국' },
+      { x: -162, z: -26, w: 14, d: 14, h: 22, color: 0x1E293B, neon: '#10B981', title: '🌐 에코 스마트 시티홀' }
+    ];
+
+    towers.forEach(t => {
+      const group = new THREE.Group();
+      group.position.set(t.x, 0, t.z);
+
+      // 유리 커튼월 본체 (고광택 PBR 메탈릭/글래스 질감)
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: t.color,
+        roughness: 0.15,
+        metalness: 0.72
+      });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(t.w, t.h, t.d), bodyMat);
+      body.position.y = t.h / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+
+      // 수평 LED 발광 스카이라인 스트립 (블룸 효과와 결합되어 빛남!)
+      const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(t.neon) });
+      for (let y = 4; y < t.h - 1; y += 3.2) {
+        const band = new THREE.Mesh(new THREE.BoxGeometry(t.w + 0.18, 0.22, t.d + 0.18), glowMat);
+        band.position.y = y;
+        group.add(band);
+      }
+
+      // 옥상 헬리패드 & 첨탑 안테나
+      const spire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.35, 5.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 0.8 })
+      );
+      spire.position.y = t.h + 2.75;
+      group.add(spire);
+
+      const beacon = new THREE.Mesh(
+        new THREE.SphereGeometry(0.38, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xFF1744 })
+      );
+      beacon.position.y = t.h + 5.6;
+      group.add(beacon);
+
+      const sign = new THREE.Mesh(
+        new THREE.PlaneGeometry(11.5, 2.2),
+        new THREE.MeshBasicMaterial({
+          map: this.createSignBannerTexture(t.title, t.neon),
+          side: THREE.DoubleSide
+        })
+      );
+      sign.position.set(0, t.h + 1.5, t.d / 2 + 0.2);
+      group.add(sign);
+
+      this.scene.add(group);
+      this.physics.addBoxCollider(t.x, t.h / 2, t.z, t.w / 2, t.h / 2, t.d / 2);
+    });
+  }
+
+  /**
+   * 🏖️ 8-B. 남쪽 에메랄드 해변 & 마리나 항구 & 회전 등대 & 3D 세일링 요트 지구 (z = 192 ~ 295)
+   */
+  private buildBeachAndHarborDistrict(): void {
+    // 1. 황금빛 모래사장 해변 (z = 192 ~ 218)
+    const sand = new THREE.Mesh(
+      new THREE.PlaneGeometry(360, 30),
+      new THREE.MeshStandardMaterial({ color: 0xFDE68A, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 })
+    );
+    sand.rotation.x = -Math.PI / 2;
+    sand.position.set(0, 0.018, 206);
+    sand.receiveShadow = true;
+    this.scene.add(sand);
+
+    // 2. 에메랄드 오션 바다 (z = 220 ~ 320)
+    const ocean = new THREE.Mesh(
+      new THREE.PlaneGeometry(460, 110),
+      new THREE.MeshStandardMaterial({
+        color: 0x0284C7,
+        roughness: 0.12,
+        metalness: 0.45,
+        polygonOffset: true,
+        polygonOffsetFactor: -1
+      })
+    );
+    ocean.rotation.x = -Math.PI / 2;
+    ocean.position.set(0, 0.025, 272);
+    this.scene.add(ocean);
+    // 바다에 빠지지 않도록 해안선 안전 방파제 콜라이더 배치
+    this.physics.addBoxCollider(0, 2, 220, 230, 2, 1.0);
+
+    // 3. 해변 파라솔 & 야자수 (Palm Trees)
+    const parasolColors = [0xEF4444, 0x3B82F6, 0xFACC15, 0xEC4899, 0x10B981];
+    [-75, -42, -16, 16, 42, 75].forEach((bx, idx) => {
+      const pGroup = new THREE.Group();
+      pGroup.position.set(bx, 0, 202);
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 2.8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xFFFFFF })
+      );
+      pole.position.y = 1.4;
+      const umbrella = new THREE.Mesh(
+        new THREE.ConeGeometry(2.1, 0.9, 12),
+        new THREE.MeshStandardMaterial({ color: parasolColors[idx % parasolColors.length] })
+      );
+      umbrella.position.y = 2.8;
+      pGroup.add(pole, umbrella);
+      this.scene.add(pGroup);
+    });
+
+    // 4. 마리나 우드 데크 부두 (Marina Pier, x = 0, z = 200 ~ 236)
+    const pier = new THREE.Mesh(
+      new THREE.BoxGeometry(12, 0.45, 34),
+      new THREE.MeshStandardMaterial({ color: 0x92400E, roughness: 0.75 })
+    );
+    pier.position.set(0, 0.25, 216);
+    this.scene.add(pier);
+
+    const pierSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(10.5, 2.0),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture('🏖️ 타요 에메랄드 해변 & 마리나 항구', '#0284C7'),
+        side: THREE.DoubleSide
+      })
+    );
+    pierSign.position.set(0, 4.5, 196);
+    this.scene.add(pierSign);
+
+    // 5. 바다 위를 둥실둥실 떠다니는 3D 럭셔리 세일링 요트 3척
+    const yachtSailColors = [0xFFFFFF, 0xFEF08A, 0xBAE6FD];
+    [-48, 24, 68].forEach((yx, idx) => {
+      const yGroup = new THREE.Group();
+      const yz = 236 + (idx % 2) * 14;
+      yGroup.position.set(yx, 0.3, yz);
+
+      const hull = new THREE.Mesh(
+        new THREE.BoxGeometry(3.4, 1.2, 7.6),
+        new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.2 })
+      );
+      hull.position.y = 0.6;
+      yGroup.add(hull);
+
+      const mast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.12, 8.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0xCBD5E1 })
+      );
+      mast.position.y = 4.8;
+      yGroup.add(mast);
+
+      const sail = new THREE.Mesh(
+        new THREE.ConeGeometry(2.6, 6.8, 3),
+        new THREE.MeshStandardMaterial({ color: yachtSailColors[idx % yachtSailColors.length], side: THREE.DoubleSide })
+      );
+      sail.position.set(0, 5.0, 0.4);
+      yGroup.add(sail);
+
+      this.scene.add(yGroup);
+      this.yachts.push({ group: yGroup, baseX: yx, baseZ: yz, phase: idx * 1.7 });
+    });
+
+    // 6. 🚨 해안 절벽 3D 빨간 등대 & 360도 회전 서치라이트 빔 (x = 96, z = 208)
+    const lhGroup = new THREE.Group();
+    lhGroup.position.set(96, 0, 208);
+
+    const lhBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 3.4, 18, 16),
+      new THREE.MeshStandardMaterial({ color: 0xEF4444, roughness: 0.4 })
+    );
+    lhBase.position.y = 9.0;
+    lhBase.castShadow = true;
+    lhGroup.add(lhBase);
+
+    // 등대 흰색 줄무늬 밴드 2개
+    [5.5, 12.5].forEach(by => {
+      const stripe = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.85 - by * 0.05, 3.05 - by * 0.05, 3.0, 16),
+        new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.4 })
+      );
+      stripe.position.y = by;
+      lhGroup.add(stripe);
+    });
+
+    // 등대 랜턴 룸 & 회전 불빛 빔
+    const lantern = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.0, 2.0, 2.6, 12),
+      new THREE.MeshBasicMaterial({ color: 0xFEF08A })
+    );
+    lantern.position.y = 19.2;
+    lhGroup.add(lantern);
+
+    const beamPivot = new THREE.Group();
+    beamPivot.position.y = 19.2;
+    const beamCone = new THREE.Mesh(
+      new THREE.ConeGeometry(4.5, 28, 16, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xFEF08A,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    beamCone.rotation.x = Math.PI / 2;
+    beamCone.position.z = 14;
+    beamPivot.add(beamCone);
+    lhGroup.add(beamPivot);
+    this.lighthouseBeam = beamPivot;
+
+    this.scene.add(lhGroup);
+    this.physics.addCylinderCollider(96, 9, 208, 3.4, 9);
+  }
+
+  /**
+   * 🎠 8-C. 원더랜드 회전목마(Carousel) & 🎈 하늘 위를 나는 3D 열기구 선단
+   */
+  private buildThemeParkCarouselAndBalloons(): void {
+    // 1. 대관람차 옆 회전목마 (x = 114, z = 82)
+    const cGroup = new THREE.Group();
+    cGroup.position.set(114, 0, 82);
+
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(5.5, 5.8, 0.6, 24),
+      new THREE.MeshStandardMaterial({ color: 0xFBBF24, metalness: 0.3, roughness: 0.3 })
+    );
+    base.position.y = 0.3;
+    cGroup.add(base);
+
+    const centerPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 0.6, 5.6, 12),
+      new THREE.MeshStandardMaterial({ color: 0xFEF08A, metalness: 0.5 })
+    );
+    centerPole.position.y = 3.1;
+    cGroup.add(centerPole);
+
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(6.2, 2.8, 16),
+      new THREE.MeshStandardMaterial({ color: 0xEC4899, roughness: 0.35 })
+    );
+    roof.position.y = 7.0;
+    cGroup.add(roof);
+
+    const spinner = new THREE.Group();
+    const horseColors = [0xFFFFFF, 0x38BDF8, 0xF472B6, 0xFACC15, 0x34D399, 0xA855F7];
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const px = Math.cos(ang) * 4.0;
+      const pz = Math.sin(ang) * 4.0;
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 5.2, 8),
+        new THREE.MeshStandardMaterial({ color: 0xFDE047, metalness: 0.6 })
+      );
+      pole.position.set(px, 3.0, pz);
+      spinner.add(pole);
+
+      const horse = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.9, 1.5),
+        new THREE.MeshStandardMaterial({ color: horseColors[i], roughness: 0.3 })
+      );
+      horse.position.set(px, 2.0 + (i % 2) * 0.5, pz);
+      horse.rotation.y = -ang;
+      spinner.add(horse);
+    }
+    cGroup.add(spinner);
+    this.carouselGroup = spinner;
+
+    this.scene.add(cGroup);
+    this.physics.addCylinderCollider(114, 3.5, 82, 5.5, 3.5);
+
+    // 2. 🎈 하늘 위를 유영하는 초대형 3D 열기구 4기
+    const balloonConfigs = [
+      { cx: -70, cz: -70, y: 34, r: 22, speed: 0.18, color: 0xEF4444, stripe: 0xFACC15 },
+      { cx: 75, cz: 70, y: 38, r: 26, speed: -0.15, color: 0x3B82F6, stripe: 0xFFFFFF },
+      { cx: 0, cz: 150, y: 32, r: 30, speed: 0.2, color: 0xEC4899, stripe: 0xFEF08A },
+      { cx: -90, cz: 90, y: 40, r: 20, speed: 0.14, color: 0x10B981, stripe: 0xFFFFFF }
+    ];
+
+    balloonConfigs.forEach((b, idx) => {
+      const bGroup = new THREE.Group();
+      const envelope = new THREE.Mesh(
+        new THREE.SphereGeometry(4.2, 18, 16),
+        new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.4 })
+      );
+      envelope.scale.y = 1.22;
+      envelope.position.y = 3.5;
+      bGroup.add(envelope);
+
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(4.15, 0.38, 10, 24),
+        new THREE.MeshBasicMaterial({ color: b.stripe })
+      );
+      band.rotation.x = Math.PI / 2;
+      band.position.y = 3.5;
+      bGroup.add(band);
+
+      const basket = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 1.3, 1.6),
+        new THREE.MeshStandardMaterial({ color: 0x92400E })
+      );
+      basket.position.y = -2.2;
+      bGroup.add(basket);
+
+      bGroup.position.set(b.cx, b.y, b.cz);
+      this.scene.add(bGroup);
+      this.hotAirBalloons.push({
+        group: bGroup,
+        baseY: b.y,
+        phase: idx * 1.5,
+        speed: b.speed,
+        radius: b.r,
+        cx: b.cx,
+        cz: b.cz
+      });
+    });
+  }
+
+  /**
+   * 🚂 8-D. 외곽 순환 타요 특급열차 (3D 기관차 + 객차 2량 + 원형 철길 트랙!)
+   */
+  private buildExpressTrainSystem(): void {
+    const trackRadius = 152;
+    // 원형 자갈 철길 도상 및 침목 링 (북쪽~동쪽~서쪽 파노라마 순환 트랙)
+    const railRing = new THREE.Mesh(
+      new THREE.RingGeometry(trackRadius - 1.3, trackRadius + 1.3, 96),
+      new THREE.MeshStandardMaterial({
+        color: 0x64748B,
+        roughness: 0.85,
+        polygonOffset: true,
+        polygonOffsetFactor: -1
+      })
+    );
+    railRing.rotation.x = -Math.PI / 2;
+    railRing.position.set(0, 0.016, 0);
+    this.scene.add(railRing);
+
+    // 3량 편성 특급열차 그룹
+    const trainGroup = new THREE.Group();
+    const wheels: THREE.Object3D[] = [];
+    const carColors = [0xEF4444, 0x0284C7, 0xFACC15];
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.6 });
+
+    carColors.forEach((col, cIdx) => {
+      const car = new THREE.Group();
+      car.position.z = -cIdx * 7.2;
+
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(2.8, 3.0, 6.2),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.3, metalness: 0.2 })
+      );
+      body.position.y = 2.0;
+      body.castShadow = true;
+      car.add(body);
+
+      if (cIdx === 0) {
+        // 선두 증기/특급 기관차 굴뚝 & 황금 헤드램프
+        const chimney = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.45, 0.35, 1.4, 12),
+          new THREE.MeshStandardMaterial({ color: 0x1E293B })
+        );
+        chimney.position.set(0, 4.0, 2.0);
+        car.add(chimney);
+
+        const headLamp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.4, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xFEF08A })
+        );
+        headLamp.position.set(0, 2.4, 3.15);
+        car.add(headLamp);
+      }
+
+      // 기차 바퀴 4개
+      [
+        [-1.45, -1.8],
+        [1.45, -1.8],
+        [-1.45, 1.8],
+        [1.45, 1.8]
+      ].forEach(([wx, wz]) => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.25, 12), wheelMat);
+        w.rotation.z = Math.PI / 2;
+        w.position.set(wx, 0.55, wz);
+        car.add(w);
+        wheels.push(w);
+      });
+
+      trainGroup.add(car);
+    });
+
+    this.scene.add(trainGroup);
+    this.expressTrain = { group: trainGroup, angle: 0, wheels };
+  }
+
+  /**
+   * 🌦️ 8-E. 실시간 3D 날씨 파티클 (꽃비 / 비와 무지개 / 눈송이) & 하늘을 가로지르는 초대형 7색 무지개!
+   */
+  private buildWeatherAndRainbowSystem(): void {
+    // 1. 하늘 위 초대형 7색 무지개 아치 (비와 무지개 날씨이거나 낮 시간에 은은하게 빛남)
+    const rbGroup = new THREE.Group();
+    rbGroup.position.set(0, -8, -195);
+    const rainbowColors = [0xFF1744, 0xFF9100, 0xFFEA00, 0x00E676, 0x00B0FF, 0x3D5AFE, 0xD500F9];
+    rainbowColors.forEach((hex, idx) => {
+      const r = 165 - idx * 2.4;
+      const arc = new THREE.Mesh(
+        new THREE.TorusGeometry(r, 1.15, 8, 64, Math.PI),
+        new THREE.MeshBasicMaterial({
+          color: hex,
+          transparent: true,
+          opacity: 0.52,
+          depthWrite: false
+        })
+      );
+      rbGroup.add(arc);
+    });
+    this.scene.add(rbGroup);
+    this.rainbowGroup = rbGroup;
+
+    // 2. 3D 날씨 파티클 필드 (버스 주변 90m 영역에 흩날리는 꽃잎/빗방울/눈송이)
+    const count = 420;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * 110;
+      positions[i * 3 + 1] = Math.random() * 32;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 110;
+    }
+    const pGeom = new THREE.BufferGeometry();
+    pGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: 0xF9A8D4,
+      size: 0.55,
+      transparent: true,
+      opacity: 0.85
+    });
+    const points = new THREE.Points(pGeom, pMat);
+    points.visible = false;
+    this.scene.add(points);
+    this.weatherParticles = points;
+  }
+
+  public setWeather(weather: WeatherType): void {
+    this.currentWeather = weather;
+    if (!this.weatherParticles) return;
+
+    const mat = this.weatherParticles.material as THREE.PointsMaterial;
+    if (weather === 'clear') {
+      this.weatherParticles.visible = false;
+      if (this.rainbowGroup) this.rainbowGroup.visible = true;
+    } else if (weather === 'blossom') {
+      this.weatherParticles.visible = true;
+      mat.color.setHex(0xF9A8D4); // 분홍 벚꽃잎
+      mat.size = 0.62;
+      if (this.rainbowGroup) this.rainbowGroup.visible = true;
+    } else if (weather === 'rain_rainbow') {
+      this.weatherParticles.visible = true;
+      mat.color.setHex(0x7DD3FC); // 시원한 빗방울
+      mat.size = 0.45;
+      if (this.rainbowGroup) this.rainbowGroup.visible = true;
+    } else if (weather === 'snow') {
+      this.weatherParticles.visible = true;
+      mat.color.setHex(0xFFFFFF); // 하얀 눈송이
+      mat.size = 0.68;
+      if (this.rainbowGroup) this.rainbowGroup.visible = false;
+    }
+  }
+
+  public cycleWeather(): WeatherType {
+    const order: WeatherType[] = ['clear', 'blossom', 'rain_rainbow', 'snow'];
+    const nextIdx = (order.indexOf(this.currentWeather) + 1) % order.length;
+    const next = order[nextIdx];
+    this.setWeather(next);
+    return next;
   }
 
   private buildFerrisWheel(x: number, z: number): void {
@@ -1762,60 +2571,119 @@ export class WorldManager {
   }
 
   /**
-   * 실제 가족 사진 기반 귀여운 SD 캐릭터 생성 (선율, 태율, 엄마, 아빠)
-   * 몸통은 귀여운 3D SD 복장, 얼굴은 골드 테두리가 둘러진 원형 뱃지 사진
+   * 실제 가족 사진 기반 귀여운 SD 캐릭터 생성 (선율, 태율이, 엄마, 아빠)
+   * - 기존 문제 해결: 동그란 구체(headBase)가 사진 뱃지 앞으로 튀어나와 얼굴을 가리던 문제를 완벽 해결!
+   * - 구체 헤드를 제거하고, 골드 메달 림(Rim) 양면에 정방향 원형 사진 디스크(CircleGeometry)를 부착하여
+   *   어느 각도에서도 선율이, 태율이, 엄마, 아빠 얼굴이 100% 또렷하고 정방향으로 보이도록 개선!
+   * - 또한 버스가 다가오면 캐릭터가 버스를 향해 반갑게 바라보며 손을 흔듭니다.
    */
-  private createFamilyPassenger(badgeUrl: string, bodyColor: number, pantColor: number): THREE.Group {
+  private createFamilyPassenger(
+    badgeUrl: string,
+    bodyColor: number,
+    pantColor: number,
+    labelText: string
+  ): THREE.Group {
     const group = new THREE.Group();
 
-    // 1. 다리 / 하반신
-    const legGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.38, 10);
-    const legMat = new THREE.MeshStandardMaterial({ color: pantColor, roughness: 0.6 });
-    [-0.14, 0.14].forEach(lx => {
+    // 1. 귀여운 신발 & 하반신 다리
+    const shoeGeom = new THREE.BoxGeometry(0.2, 0.12, 0.28);
+    const shoeMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF, roughness: 0.4 });
+    const legGeom = new THREE.CylinderGeometry(0.11, 0.1, 0.4, 12);
+    const legMat = new THREE.MeshStandardMaterial({ color: pantColor, roughness: 0.55 });
+    [-0.15, 0.15].forEach(lx => {
+      const shoe = new THREE.Mesh(shoeGeom, shoeMat);
+      shoe.position.set(lx, 0.06, 0.04);
+      group.add(shoe);
+
       const leg = new THREE.Mesh(legGeom, legMat);
-      leg.position.set(lx, 0.19, 0);
+      leg.position.set(lx, 0.26, 0);
       group.add(leg);
     });
 
-    // 2. 귀여운 SD 상체 (둥근 셔츠/스웨터)
-    const torsoGeom = new THREE.CylinderGeometry(0.28, 0.34, 0.52, 14);
-    const torsoMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5 });
+    // 2. 귀여운 SD 상체 (둥근 후드티/스웨터)
+    const torsoGeom = new THREE.CylinderGeometry(0.28, 0.35, 0.54, 16);
+    const torsoMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.45 });
     const torso = new THREE.Mesh(torsoGeom, torsoMat);
-    torso.position.y = 0.58;
+    torso.position.y = 0.66;
+    torso.castShadow = true;
     group.add(torso);
 
-    // 3. 작은 팔
-    const armGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.34, 8);
-    [-0.34, 0.34].forEach(ax => {
+    // 3. 귀여운 목 받침대 (절대 얼굴 뱃지 위로 올라오지 않음)
+    const neck = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.14, 0.16, 12),
+      new THREE.MeshStandardMaterial({ color: 0xFDE68A, roughness: 0.4 })
+    );
+    neck.position.y = 0.96;
+    group.add(neck);
+
+    // 4. 반갑게 인사하는 양팔
+    const armGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.36, 10);
+    const handMat = new THREE.MeshStandardMaterial({ color: 0xFDE68A, roughness: 0.4 });
+    [-0.36, 0.36].forEach(ax => {
       const arm = new THREE.Mesh(armGeom, torsoMat);
-      arm.position.set(ax, 0.56, 0);
-      arm.rotation.z = ax > 0 ? -0.35 : 0.35;
+      arm.position.set(ax, 0.72, 0);
+      arm.rotation.z = ax > 0 ? -0.55 : 0.4;
       group.add(arm);
+
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), handMat);
+      hand.position.set(ax * 1.25, ax > 0 ? 0.88 : 0.56, 0);
+      group.add(hand);
     });
 
-    // 4. 머리 및 사진 뱃지 (앞뒤 양면으로 얼굴 사진이 선명하게 보이도록)
+    // 5. 얼굴 사진 메달 헤드 (구체 없이 순수 골드 메달 테두리 + 앞/뒤 정방향 원형 사진 디스크!)
     const textureLoader = new THREE.TextureLoader();
     const faceTex = textureLoader.load(badgeUrl);
     faceTex.colorSpace = THREE.SRGBColorSpace;
 
-    // 머리 지지대 (입체 구체)
-    const headBase = new THREE.Mesh(
-      new THREE.SphereGeometry(0.38, 16, 16),
-      new THREE.MeshStandardMaterial({ color: 0xFDE68A, roughness: 0.4 })
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.48, 0);
+
+    // 골드 메달 외곽 림 (측면 두께만 담당하고 앞뒤 사진은 가리지 않음)
+    const rimGeom = new THREE.CylinderGeometry(0.56, 0.56, 0.08, 36);
+    rimGeom.rotateX(Math.PI / 2);
+    const rimMat = new THREE.MeshStandardMaterial({
+      color: 0xFACC15,
+      metalness: 0.45,
+      roughness: 0.25,
+      emissive: 0xF59E0B,
+      emissiveIntensity: 0.18
+    });
+    const rimMesh = new THREE.Mesh(rimGeom, rimMat);
+    headGroup.add(rimMesh);
+
+    // 정방향 원형 얼굴 디스크 (CircleGeometry는 UV가 정방향 0~1로 매핑되어 회전 왜곡이 전혀 없음!)
+    const faceDiscGeom = new THREE.CircleGeometry(0.55, 36);
+    const faceDiscMat = new THREE.MeshBasicMaterial({
+      map: faceTex,
+      transparent: true,
+      toneMapped: false
+    });
+
+    // 앞면 얼굴 (+Z)
+    const frontFace = new THREE.Mesh(faceDiscGeom, faceDiscMat);
+    frontFace.position.z = 0.045;
+    headGroup.add(frontFace);
+
+    // 뒷면 얼굴 (-Z, 뒤에서 봐도 똑바로 보이도록)
+    const backFace = new THREE.Mesh(faceDiscGeom, faceDiscMat);
+    backFace.position.z = -0.045;
+    backFace.rotation.y = Math.PI;
+    headGroup.add(backFace);
+
+    // 머리 위 귀여운 이름표 배너 ("👦 선율이" 등)
+    const nameTag = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.75, 0.46),
+      new THREE.MeshBasicMaterial({
+        map: this.createSignBannerTexture(labelText, '#F59E0B'),
+        transparent: true,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      })
     );
-    headBase.position.y = 1.15;
-    group.add(headBase);
+    nameTag.position.set(0, 0.78, 0);
+    headGroup.add(nameTag);
 
-    // 골드 림 테두리 원형 메달/얼굴 사진
-    const badgeGeom = new THREE.CylinderGeometry(0.48, 0.48, 0.06, 32);
-    badgeGeom.rotateX(Math.PI / 2);
-    const badgeRimMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, metalness: 0.5, roughness: 0.3 });
-    const badgeFaceMat = new THREE.MeshBasicMaterial({ map: faceTex, transparent: true });
-
-    // 앞면 메달
-    const badgeFront = new THREE.Mesh(badgeGeom, [badgeRimMat, badgeFaceMat, badgeFaceMat]);
-    badgeFront.position.set(0, 1.18, 0.28);
-    group.add(badgeFront);
+    group.add(headGroup);
 
     // 애니메이션 및 승차 데이터
     group.userData = { animTime: Math.random() * 5, isBoarded: false, isFamily: true };
@@ -1921,13 +2789,20 @@ export class WorldManager {
       let passengerMesh: THREE.Group;
       let passengerName: string;
       let passengerIcon: string;
+      let passengerPhotoUrl: string | undefined;
       const isFamily = familyIndices.has(idx);
 
       if (isFamily) {
         const f = familyPool[familyIdx++];
         passengerName = f.name;
         passengerIcon = f.icon;
-        passengerMesh = this.createFamilyPassenger(f.badge, f.bodyColor, f.pantColor);
+        passengerPhotoUrl = f.badge;
+        passengerMesh = this.createFamilyPassenger(
+          f.badge,
+          f.bodyColor,
+          f.pantColor,
+          `${f.icon} ${f.name}`
+        );
       } else {
         const a = animalPool[animalIdx++];
         passengerName = a.name;
@@ -1948,6 +2823,7 @@ export class WorldManager {
         targetStopName: base.targetStopName,
         passengerName,
         passengerIcon,
+        passengerPhotoUrl,
         passengerMesh,
         hasPassenger: true,
         isFamily
@@ -1965,7 +2841,8 @@ export class WorldManager {
       [24, 54], [-24, 54], [24, -54], [-24, -54],
       [0, 92], [0, -92], [92, 0], [-92, 0],
       [54, 92], [-54, 92], [54, -92], [-54, -92],
-      [0, 136], [0, -136], [136, 0], [-136, 0]
+      [0, 136], [0, -136], [136, 0], [-136, 0],
+      [-54, 184], [0, 184], [54, 184]
     ];
 
     const starGeom = new THREE.OctahedronGeometry(0.68, 0);
@@ -2170,7 +3047,7 @@ export class WorldManager {
   }
 
   /**
-   * 월드 내 동적 오브젝트(분수대, 소방 타워 불꽃, 물대포, 병원 하트, 보행자, F1/긴급 NPC 차량) 업데이트
+   * 월드 내 동적 오브젝트(분수대, 소방 타워 불꽃, 물대포, 병원 하트, 보행자, 열차, 회전목마, 열기구, 요트, 등대, 정비소 리프트, 날씨 파티클 등) 업데이트
    */
   public updateWorldElements(
     delta: number,
@@ -2229,46 +3106,122 @@ export class WorldManager {
       h.rotation.y += 1.8 * delta;
     });
 
-    // 1. 정류장 승객 콩콩 점프 애니메이션
+    // 1. 정류장 승객 콩콩 점프 애니메이션 & 플레이어 버스를 향해 얼굴 돌리기!
     this.busStops.forEach(stop => {
       const p = stop.passengerMesh;
       if (!p.userData.isBoarded) {
         p.userData.animTime += delta * 4.5;
         p.position.y = Math.abs(Math.sin(p.userData.animTime)) * 0.24;
+
+        // 승객이 항상 다가오는 플레이어 버스를 바라보도록 회전하여 가족 얼굴 사진이 정면으로 보임!
+        const worldX = stop.x + p.position.x;
+        const worldZ = stop.z + p.position.z;
+        const angleToBus = Math.atan2(busPos.x - worldX, busPos.z - worldZ);
+        p.rotation.y = angleToBus;
       }
     });
 
     // 2. 세차장 브러쉬 회전 & 비눗방울 상승
     this.carWashBrushes.forEach((b, idx) => {
-      b.rotation.y += (idx === 0 ? 1 : -1) * 3.2 * delta;
+      b.rotation.y += (idx % 2 === 0 ? 1 : -1) * 3.8 * delta;
     });
     this.carWashBubbles.forEach(bubble => {
-      bubble.position.y += 1.4 * delta;
+      bubble.position.y += 1.5 * delta;
       if (bubble.position.y > 4.8) bubble.position.y = 0.6;
     });
 
-    // 3. 대관람차 및 풍차 회전
+    // 2-1. 주유/충전소 에너지 홀로그램 링 회전
+    this.chargingEnergyRings.forEach((ring, idx) => {
+      ring.rotation.z += 2.2 * delta;
+      ring.position.y = 1.2 + Math.sin(nowSec * 3.5 + idx) * 0.65;
+    });
+
+    // 2-2. 하나 누나의 정비소 유압 리프트 & 로봇 렌치 암 애니메이션
+    const distToRepair = Math.hypot(busPos.x - -30, busPos.z - 84.5);
+    if (this.repairLiftPlatform) {
+      const targetLiftY = distToRepair < 7.5 ? 0.45 + Math.sin(nowSec * 3.0) * 0.25 : 0.14;
+      this.repairLiftPlatform.position.y += (targetLiftY - this.repairLiftPlatform.position.y) * 4 * delta;
+    }
+    this.repairRobotArms.forEach((arm, idx) => {
+      const swingSpeed = distToRepair < 8.5 ? 6.5 : 1.8;
+      arm.rotation.z = (idx === 0 ? -0.55 : 0.55) + Math.sin(nowSec * swingSpeed + idx) * 0.35;
+    });
+
+    // 3. 대관람차, 회전목마, 풍차, 열기구, 요트, 등대, 외곽 순환 특급열차 애니메이션
     if (this.ferrisWheel) {
       this.ferrisWheel.rotation.z += 0.25 * delta;
+    }
+    if (this.carouselGroup) {
+      this.carouselGroup.rotation.y += 0.85 * delta;
     }
     if (this.windmillBlades) {
       this.windmillBlades.rotation.z -= 0.9 * delta;
     }
+    this.hotAirBalloons.forEach(b => {
+      const x = b.cx + Math.cos(nowSec * b.speed + b.phase) * b.radius;
+      const z = b.cz + Math.sin(nowSec * b.speed + b.phase) * b.radius;
+      const y = b.baseY + Math.sin(nowSec * 1.4 + b.phase) * 3.2;
+      b.group.position.set(x, y, z);
+      b.group.rotation.y += 0.25 * delta;
+    });
+    this.yachts.forEach(y => {
+      y.group.position.x = y.baseX + Math.sin(nowSec * 0.55 + y.phase) * 6.5;
+      y.group.position.y = Math.sin(nowSec * 2.2 + y.phase) * 0.22;
+      y.group.rotation.z = Math.sin(nowSec * 1.8 + y.phase) * 0.06;
+    });
+    if (this.lighthouseBeam) {
+      this.lighthouseBeam.rotation.y += 1.2 * delta;
+    }
+    if (this.expressTrain) {
+      this.expressTrain.angle += 0.14 * delta;
+      const trackR = 152;
+      const tx = Math.cos(this.expressTrain.angle) * trackR;
+      const tz = Math.sin(this.expressTrain.angle) * trackR;
+      this.expressTrain.group.position.set(tx, 0.16, tz);
+      // 접선 방향을 바라보도록 회전
+      this.expressTrain.group.rotation.y = -this.expressTrain.angle;
+      this.expressTrain.wheels.forEach(w => {
+        w.rotation.z -= 4.5 * delta;
+      });
+    }
 
-    // 4. 인터랙티브 시설 (차고지 문 개폐, 세차장, 충전소, 경찰서, 소방서, 병원) 판정
+    // 3-1. 실시간 3D 날씨 파티클 (꽃비 / 빗방울 / 눈송이) 업데이트
+    if (this.weatherParticles && this.weatherParticles.visible) {
+      const posAttr = this.weatherParticles.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const fallSpeed = this.currentWeather === 'rain_rainbow' ? 28 : this.currentWeather === 'snow' ? 6.5 : 4.8;
+      const driftSpeed = this.currentWeather === 'rain_rainbow' ? 0.5 : 2.4;
+
+      for (let i = 0; i < posAttr.count; i++) {
+        let px = posAttr.getX(i);
+        let py = posAttr.getY(i) - fallSpeed * delta;
+        let pz = posAttr.getZ(i);
+
+        px += Math.sin(nowSec * 1.8 + i) * driftSpeed * delta;
+        if (py < 0.2) {
+          py = 38 + Math.random() * 8;
+          px = busPos.x + (Math.random() - 0.5) * 140;
+          pz = busPos.z + (Math.random() - 0.5) * 140;
+        }
+        posAttr.setXYZ(i, px, py, pz);
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    // 4. 인터랙티브 시설 (차고지 문 개폐, 세차장, 충전소, 정비소, F1 피트스탑, 경찰서, 소방서, 병원) 판정
     this.interactiveZones.forEach(zone => {
       if (zone.cooldown > 0) zone.cooldown -= delta;
       const dist = Math.hypot(busPos.x - zone.x, busPos.z - zone.z);
 
       if (zone.type === 'garage') {
-        const targetDoorY = dist < 16 ? 5.6 : 2.1;
+        // 차고지에 다가가면 4개의 문이 활짝 열려 내부 베이로 직접 들어가 주차 가능!
+        const targetDoorY = dist < 22 ? 5.9 : 2.1;
         this.garageDoors.forEach(d => {
-          d.position.y += (targetDoorY - d.position.y) * 5 * delta;
+          d.position.y += (targetDoorY - d.position.y) * 5.5 * delta;
         });
       }
 
       if (dist < zone.radius && zone.cooldown <= 0) {
-        zone.cooldown = 14.0;
+        zone.cooldown = 12.0;
         triggeredZone = zone;
       }
     });

@@ -81,6 +81,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'KeyQ':
         game.startNextEmergencyDispatch();
         break;
+      case 'KeyV':
+        game.toggleWeather();
+        break;
     }
   });
 
@@ -192,6 +195,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnTime = document.getElementById('btn-time');
   if (btnTime) {
     btnTime.addEventListener('click', () => game.toggleTimeOfDay());
+  }
+
+  // 날씨 & 무지개 전환 버튼
+  const btnWeather = document.getElementById('btn-weather');
+  if (btnWeather) {
+    btnWeather.addEventListener('click', () => game.toggleWeather());
   }
 
   // 배경음악 토글 버튼
